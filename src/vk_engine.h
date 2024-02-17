@@ -5,6 +5,7 @@
 
 #include <vk_descriptors.h>
 #include <vk_types.h>
+#include <vk_loader.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -34,7 +35,6 @@ public:
     VkPipelineLayout _trianglePipelineLayout;
     VkPipelineLayout _meshPipelineLayout;
     VkPipeline _meshPipeline;
-    GPUMeshBuffers rectangle;
     std::vector<ComputeEffect> backgroundEffects;
     int currentBackgroundEffect { 0 };
 
@@ -46,6 +46,7 @@ public:
 
     AllocatedImage _drawImage; // Drawn images before copying to swapchain
     VkExtent2D _drawExtent;
+    AllocatedImage _depthImage;
 
     int _frameNumber { 0 };
     FrameData _frames[FRAME_OVERLAP];
@@ -61,6 +62,9 @@ public:
 
     DeletionQueue _mainDeletionQueue;
 
+    GPUMeshBuffers rectangle;
+    std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
     static VulkanEngine& Get();
     void init(); // initializes everything in the engine
     void cleanup(); // shuts down the engine
@@ -68,6 +72,8 @@ public:
     void run(); // run main loop
 
     void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const;
+
+    GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
 private:
     void init_imgui();
@@ -92,8 +98,6 @@ private:
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
     void destroy_buffer(const AllocatedBuffer& buffer) const;
-
-    GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
     void draw_background(VkCommandBuffer cmd) const;
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
