@@ -1,4 +1,4 @@
-find_package(Vulkan REQUIRED)
+ find_package(Vulkan REQUIRED)
 
 add_library(vkbootstrap STATIC)
 add_library(glm INTERFACE)
