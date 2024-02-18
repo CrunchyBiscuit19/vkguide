@@ -40,7 +40,7 @@ void VulkanEngine::init()
     // We initialize SDL and create a window with it.
     SDL_Init(SDL_INIT_VIDEO);
 
-    constexpr auto window_flags = SDL_WINDOW_VULKAN;
+    constexpr auto window_flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 
     _window = SDL_CreateWindow(
         "Vulkan Engine",
@@ -168,15 +168,20 @@ void VulkanEngine::draw()
     // Request image from the swapchain
     // _swapchainSemaphore signalled only when next image is acquired.
     uint32_t swapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex));
+    if (vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex) == VK_ERROR_OUT_OF_DATE_KHR) {
+        _resize_requested = true;
+        return;
+    }
 
     const VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
     VK_CHECK(vkResetCommandBuffer(cmd, 0)); // Reset the command buffer to begin recording again for each frame.
     const VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo)); // Start the command buffer recording
 
-    _drawExtent.width = _drawImage.imageExtent.width;
-    _drawExtent.height = _drawImage.imageExtent.height;
+    // Multiply by render scale for dynamic resolution
+    // When resizing bigger, don't make swapchain extent go beyond draw image extent
+    _drawExtent.height = std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * _renderScale;
+    _drawExtent.width = std::min(_swapchainExtent.width, _drawImage.imageExtent.width) * _renderScale;
 
     // Transition main draw image into writable general layout
     vkutil::transition_image(cmd, _drawImage.image,
@@ -264,9 +269,10 @@ void VulkanEngine::draw()
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pImageIndices = &swapchainImageIndex;
 
-    VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+    if (vkQueuePresentKHR(_graphicsQueue, &presentInfo) == VK_ERROR_OUT_OF_DATE_KHR)
+        _resize_requested = true;
 
-    // increase the number of frames drawn
+    // Increase the number of frames drawn
     _frameNumber++;
 }
 
@@ -296,6 +302,9 @@ void VulkanEngine::run()
             continue;
         }
 
+        if (_resize_requested)
+            resize_swapchain();
+
         // Imgui new frame
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame(_window);
@@ -310,6 +319,7 @@ void VulkanEngine::run()
             ImGui::SliderFloat("X Rate", &selected.data.data1.y, 0.f, 1.f);
             ImGui::SliderFloat("Y Rate", &selected.data.data1.z, 0.f, 1.f);
             ImGui::SliderFloat("Blending", &selected.data.data2.w, 0.f, 1.0f);
+            ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
 
             ImGui::End();
         }
@@ -481,7 +491,7 @@ void VulkanEngine::init_swapchain()
         1
     };
 
-    // Hardcoding the draw format to 16 bit floats
+    // Hardcoding the draw format to 16 bit floats, extra precision for lighting calculations and better rendering.
     _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
     _drawImage.imageExtent = drawImageExtent;
 
@@ -528,6 +538,22 @@ void VulkanEngine::destroy_swapchain() const
     vkDestroySwapchainKHR(_device, _swapchain, nullptr);
     for (const VkImageView& swapchainImageView : _swapchainImageViews)
         vkDestroyImageView(_device, swapchainImageView, nullptr);
+}
+
+void VulkanEngine::resize_swapchain()
+{
+    vkDeviceWaitIdle(_device);
+
+    destroy_swapchain();
+
+    int w, h;
+    SDL_GetWindowSize(_window, &w, &h);
+    _windowExtent.width = w;
+    _windowExtent.height = h;
+
+    create_swapchain(_windowExtent.width, _windowExtent.height);
+
+    _resize_requested = false;
 }
 
 void VulkanEngine::init_commands()
@@ -725,7 +751,7 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.set_multisampling_none();
-    //pipelineBuilder.enable_blending_alphablend();
+    // pipelineBuilder.enable_blending_alphablend();
     pipelineBuilder.enable_blending_additive();
     pipelineBuilder.disable_depthtest();
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
@@ -772,6 +798,8 @@ void VulkanEngine::destroy_buffer(const AllocatedBuffer& buffer) const
 
 GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
 {
+    // Unefficient pattern of waiting for the GPU command to fully execute before continuing with CPU logic
+
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 

@@ -41,10 +41,12 @@ public:
     VkExtent2D _swapchainExtent;
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
+    bool _resize_requested;
 
     AllocatedImage _drawImage; // Drawn images before copying to swapchain
-    VkExtent2D _drawExtent;
     AllocatedImage _depthImage;
+    VkExtent2D _drawExtent;
+    float _renderScale = 1.f;
 
     int _frameNumber { 0 };
     FrameData _frames[FRAME_OVERLAP];
@@ -80,6 +82,7 @@ private:
     void create_swapchain(uint32_t width, uint32_t height);
     void init_swapchain();
     void destroy_swapchain() const;
+    void resize_swapchain();
 
     void init_commands();
 
