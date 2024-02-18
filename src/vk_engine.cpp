@@ -9,12 +9,12 @@
 #include <SDL_vulkan.h>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 #include <vk_mem_alloc.h>
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
 
 #include <chrono>
 #include <thread>
@@ -123,7 +123,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) const
 
     vkCmdBeginRendering(cmd, &renderInfo);
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
     // Set dynamic viewport and scissor
     VkViewport viewport = {};
@@ -143,7 +143,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) const
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     GPUDrawPushConstants push_constants;
-    const glm::mat4 view = glm::translate(glm::mat4(1.f), glm::vec3 { 0, 0, -5 });
+    const glm::mat4 view = glm::translate(glm::mat4(1.f), glm::vec3 { 0, -2, -5 });
     glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height), 10000.f, 0.1f);
     projection[1][1] *= -1;
 
@@ -194,11 +194,11 @@ void VulkanEngine::draw()
         VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkutil::transition_image(cmd, _depthImage.image, 
+    vkutil::transition_image(cmd, _depthImage.image,
         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
         VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT  | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     draw_geometry(cmd);
 
@@ -307,13 +307,9 @@ void VulkanEngine::run()
             ImGui::Text("Selected effect: %s", selected.name);
             ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, static_cast<int>(backgroundEffects.size()) - 1);
             ImGui::SliderFloat("Starfield Threshold", &selected.data.data1.x, 0.f, 1.f);
-            ImGui::SliderFloat("X Rate", &selected.data.data1.y, -0.2f, 0.2f);
-            ImGui::SliderFloat("Y Rate", &selected.data.data1.z, -0.05f, 0.05f);
-
-            /*ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
-            ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
-            ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
-            ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));*/
+            ImGui::SliderFloat("X Rate", &selected.data.data1.y, 0.f, 1.f);
+            ImGui::SliderFloat("Y Rate", &selected.data.data1.z, 0.f, 1.f);
+            ImGui::SliderFloat("Blending", &selected.data.data2.w, 0.f, 1.0f);
 
             ImGui::End();
         }
@@ -703,7 +699,7 @@ void VulkanEngine::init_mesh_pipeline()
     VkShaderModule triangleFragShader;
     if (!vkutil::load_shader_module("../../shaders/colored_triangle.frag.spv", _device, &triangleFragShader))
         fmt::print("Error when building the triangle fragment shader module.\n");
-        else
+    else
         fmt::print("Triangle fragment shader succesfully loaded.\n");
 
     VkShaderModule triangleVertexShader;
@@ -729,11 +725,12 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.set_multisampling_none();
-    pipelineBuilder.disable_blending();
+    //pipelineBuilder.enable_blending_alphablend();
+    pipelineBuilder.enable_blending_additive();
     pipelineBuilder.disable_depthtest();
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
     pipelineBuilder.set_depth_format(_depthImage.imageFormat);
-	// pipelineBuilder.disable_depthtest();
+    // pipelineBuilder.disable_depthtest();
     pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
     _meshPipeline = pipelineBuilder.build_pipeline(_device);
