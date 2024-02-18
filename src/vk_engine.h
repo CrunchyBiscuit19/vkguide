@@ -31,8 +31,6 @@ public:
 
     VkPipeline _gradientPipeline;
     VkPipelineLayout _gradientPipelineLayout;
-    VkPipeline _trianglePipeline;
-    VkPipelineLayout _trianglePipelineLayout;
     VkPipelineLayout _meshPipelineLayout;
     VkPipeline _meshPipeline;
     std::vector<ComputeEffect> backgroundEffects;
@@ -62,7 +60,6 @@ public:
 
     DeletionQueue _mainDeletionQueue;
 
-    GPUMeshBuffers rectangle;
     std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
     static VulkanEngine& Get();
@@ -92,7 +89,6 @@ private:
 
     void init_pipelines();
     void init_background_pipelines();
-    void init_triangle_pipeline();
     void init_mesh_pipeline();
     void init_default_data();
 
