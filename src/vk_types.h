@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <vector>
 #include <span>
@@ -15,10 +16,10 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vk_mem_alloc.h>
-
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
+#include <vk_descriptors.h>
 
 struct DeletionQueue {
     std::deque<std::function<void()>> deletors;
@@ -28,25 +29,12 @@ struct DeletionQueue {
     void flush()
     {
         // Reverse iterate the deletion queue to execute all the functions
-        for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
-            (*it)(); // call functors
+        for (auto& deletor : std::ranges::reverse_view(deletors))
+        {
+	        deletor(); // call functors
         }
         deletors.clear();
     }
-};
-
-struct ComputePushConstants {
-    glm::vec4 data1;
-    glm::vec4 data2;
-    glm::vec4 data3;
-    glm::vec4 data4;
-};
-
-struct ComputeEffect {
-    const char* name;
-    VkPipeline pipeline;
-    VkPipelineLayout layout;
-    ComputePushConstants data;
 };
 
 struct AllocatedImage {
@@ -72,6 +60,7 @@ struct FrameData {
     VkFence _renderFence;
 
     DeletionQueue _deletionQueue;
+    DescriptorAllocatorGrowable _frameDescriptors;
 };
 
 struct Vertex {
@@ -91,6 +80,29 @@ struct GPUMeshBuffers {
 struct GPUDrawPushConstants {
     glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
+};
+
+struct ComputePushConstants {
+    glm::vec4 data1;
+    glm::vec4 data2;
+    glm::vec4 data3;
+    glm::vec4 data4;
+};
+
+struct GPUSceneData {
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::mat4 viewproj;
+    glm::vec4 ambientColor;
+    glm::vec4 sunlightDirection; // w for sun power
+    glm::vec4 sunlightColor;
+};
+
+struct ComputeEffect {
+    const char* name;
+    VkPipeline pipeline;
+    VkPipelineLayout layout;
+    ComputePushConstants data;
 };
 
 #define VK_CHECK(x)                                                     \

@@ -4,8 +4,8 @@
 #pragma once
 
 #include <vk_descriptors.h>
-#include <vk_types.h>
 #include <vk_loader.h>
+#include <vk_types.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -43,10 +43,17 @@ public:
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
 
+    AllocatedImage _whiteImage;
+    AllocatedImage _blackImage;
+    AllocatedImage _greyImage;
+    AllocatedImage _errorCheckerboardImage;
     AllocatedImage _drawImage; // Drawn images before copying to swapchain
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
+
+    VkSampler _defaultSamplerLinear;
+    VkSampler _defaultSamplerNearest;
 
     int _frameNumber { 0 };
     FrameData _frames[FRAME_OVERLAP];
@@ -55,6 +62,10 @@ public:
     DescriptorAllocator _globalDescriptorAllocator;
     VkDescriptorSet _drawImageDescriptors;
     VkDescriptorSetLayout _drawImageDescriptorLayout;
+    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+    VkDescriptorSetLayout _singleImageDescriptorLayout;
+
+	GPUSceneData sceneData;
 
     VkFence _immFence;
     VkCommandBuffer _immCommandBuffer;
@@ -98,7 +109,11 @@ private:
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
     void destroy_buffer(const AllocatedBuffer& buffer) const;
 
+    AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+    AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+    void destroy_image(const AllocatedImage& img) const;
+
     void draw_background(VkCommandBuffer cmd) const;
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
-    void draw_geometry(VkCommandBuffer cmd) const;
+    void draw_geometry(VkCommandBuffer cmd);
 };
