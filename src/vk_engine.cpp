@@ -145,9 +145,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     // Allocate a new uniform buffer for the scene data
     // GPU can load small amounts of data into its caches with VMA_MEMORY_USAGE_CPU_TO_GPU
     const AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-    get_current_frame()._deletionQueue.push_function([=, this]() {
-        destroy_buffer(gpuSceneDataBuffer);
-    });
 
     auto* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
     *sceneUniformData = sceneData;
@@ -552,10 +549,8 @@ void VulkanEngine::init_swapchain()
     VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
 
     _mainDeletionQueue.push_function([&]() {
-        vkDestroyImageView(_device, _drawImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
-        vkDestroyImageView(_device, _depthImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+        destroy_image(_drawImage);
+        destroy_image(_depthImage);
     });
 }
 
@@ -680,6 +675,8 @@ void VulkanEngine::init_descriptors()
     }
 
     _mainDeletionQueue.push_function([&]() {
+        vkDestroyDescriptorSetLayout(_device, _singleImageDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _gpuSceneDataDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
     });
     _mainDeletionQueue.push_function([&]() {
@@ -798,7 +795,7 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.set_multisampling_none();
-    //pipelineBuilder.enable_blending_alphablend();
+    // pipelineBuilder.enable_blending_alphablend();
     pipelineBuilder.enable_blending_additive();
     pipelineBuilder.disable_depthtest();
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
@@ -852,14 +849,10 @@ void VulkanEngine::init_default_data()
     _mainDeletionQueue.push_function([&]() {
         vkDestroySampler(_device, _defaultSamplerLinear, nullptr);
         vkDestroySampler(_device, _defaultSamplerNearest, nullptr);
-        destroy_image(_errorCheckerboardImage);
-        destroy_image(_blackImage);
-        destroy_image(_greyImage);
-        destroy_image(_whiteImage);
     });
 }
 
-AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const
+AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
 {
     VkBufferCreateInfo bufferInfo = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     bufferInfo.pNext = nullptr;
@@ -873,6 +866,11 @@ AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags
     AllocatedBuffer newBuffer;
     VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation,
         &newBuffer.info));
+
+    _mainDeletionQueue.push_function([=]() { // Leave this on =, imguiPool c++ object gets destroyed after function ends, copy it instead
+        destroy_buffer(newBuffer);
+    });
+
     return newBuffer;
 }
 
@@ -891,11 +889,11 @@ GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<
     GPUMeshBuffers newSurface;
 
     newSurface.vertexBuffer = create_buffer(vertexBufferSize,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+                                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                            VMA_MEMORY_USAGE_GPU_ONLY);
     newSurface.indexBuffer = create_buffer(indexBufferSize,
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+                                           VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                           VMA_MEMORY_USAGE_GPU_ONLY);
     const VkBufferDeviceAddressInfo deviceAdressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = newSurface.vertexBuffer.buffer };
     newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAdressInfo);
 
@@ -920,16 +918,10 @@ GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<
         vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
     });
 
-    destroy_buffer(staging);
-    _mainDeletionQueue.push_function([=]() { // Leave this on =, imguiPool c++ object gets destroyed after function ends, copy it instead
-        destroy_buffer(newSurface.vertexBuffer);
-        destroy_buffer(newSurface.indexBuffer);
-    });
-
     return newSurface;
 }
 
-AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped) const
+AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
     AllocatedImage newImage;
     newImage.imageFormat = format;
@@ -952,21 +944,25 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkIm
     view_info.subresourceRange.levelCount = img_info.mipLevels;
     VK_CHECK(vkCreateImageView(_device, &view_info, nullptr, &newImage.imageView));
 
+    _mainDeletionQueue.push_function([=]() { // Leave this on =, imguiPool c++ object gets destroyed after function ends, copy it instead
+        destroy_image(newImage);
+    });
+
     return newImage;
 }
 
-AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped) const
+AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
     const size_t data_size = size.depth * size.width * size.height * 4;
     const AllocatedBuffer uploadbuffer = create_buffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU); // Stagiing buffer
     memcpy(uploadbuffer.info.pMappedData, data, data_size);
 
     // Image to hold data loaded from file
-    const AllocatedImage new_image = create_image(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+    const AllocatedImage newImage = create_image(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
 
     // Transition image to transfer dst optimal to copy from buffer, then transition to shader read only.
     immediate_submit([&](VkCommandBuffer cmd) {
-        vkutil::transition_image(cmd, new_image.image,
+        vkutil::transition_image(cmd, newImage.image,
             VK_PIPELINE_STAGE_2_NONE,
             VK_ACCESS_2_NONE,
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -983,10 +979,10 @@ AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkF
         copyRegion.imageSubresource.layerCount = 1;
         copyRegion.imageExtent = size;
 
-        vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
             &copyRegion);
 
-        vkutil::transition_image(cmd, new_image.image,
+        vkutil::transition_image(cmd, newImage.image,
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
             VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -994,9 +990,7 @@ AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkF
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     });
 
-    destroy_buffer(uploadbuffer);
-
-    return new_image;
+    return newImage;
 }
 
 void VulkanEngine::destroy_image(const AllocatedImage& img) const
