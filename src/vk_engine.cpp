@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <thread>
+#include <bit>
 
 #ifdef NDEBUG
 constexpr bool bUseValidationLayers = false;
@@ -341,7 +342,8 @@ void VulkanEngine::run()
             ImGui::SliderFloat("Starfield Threshold", &selected.data.data1.x, 0.f, 1.f);
             ImGui::SliderFloat("X Rate", &selected.data.data1.y, 0.f, 1.f);
             ImGui::SliderFloat("Y Rate", &selected.data.data1.z, 0.f, 1.f);
-            ImGui::SliderFloat("Blending", &selected.data.data2.w, 0.f, 1.0f);*/
+            ImGui::SliderFloat("Blending", &selected.data.data2.w, 0.f, 1.0f);
+            ImGui::SliderFloat("Background Alpha", &selected.data.data1.w, 0.f, 1.0f);*/
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
 
             ImGui::End();
@@ -486,7 +488,7 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 {
     vkb::SwapchainBuilder swapchainBuilder { _chosenGPU, _device, _surface };
 
-    _swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    _swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM; // Why is this BGRA?
     vkb::Swapchain vkbSwapchain = swapchainBuilder
                                       //.use_default_format_selection()
                                       .set_desired_format(VkSurfaceFormatKHR { .format = _swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
@@ -795,12 +797,12 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.set_multisampling_none();
-    // pipelineBuilder.enable_blending_alphablend();
-    pipelineBuilder.enable_blending_additive();
+    //pipelineBuilder.enable_blending_additive();
+	pipelineBuilder.enable_blending_alphablend();
     pipelineBuilder.disable_depthtest();
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
     pipelineBuilder.set_depth_format(_depthImage.imageFormat);
-    // pipelineBuilder.disable_depthtest();
+    //pipelineBuilder.disable_depthtest();
     pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
     _meshPipeline = pipelineBuilder.build_pipeline(_device);
@@ -817,20 +819,26 @@ void VulkanEngine::init_default_data()
 {
     testMeshes = loadGltfMeshes(this, "../../assets/basicmesh.glb").value();
 
-    uint32_t white = 0xFFFFFFFF;
-    _whiteImage = create_image((void*)&white, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    // Interpreted as little endian on host side, interpreted as big endian on device side
+    //constexpr uint32_t white = 0xFFFFFFFF;
+    constexpr uint32_t white = std::byteswap(0xFFFFFFFF);
+    _whiteImage = create_image(&white, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
-    uint32_t grey = 0xAAAAAAFF;
-    _greyImage = create_image((void*)&grey, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    //constexpr uint32_t grey = 0xAAAAAAFF;
+    constexpr uint32_t grey = std::byteswap(0xAAAAAAFF);
+    _greyImage = create_image(&grey, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
-    uint32_t black = 0x000000FF;
-    _blackImage = create_image((void*)&black, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    //constexpr uint32_t black = 0x000000FF;
+	constexpr uint32_t black = std::byteswap(0x000000FF);
+    _blackImage = create_image(&black, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
 
-    std::array<uint32_t, 16 * 16> pixels; // for 16x16 checkerboard texture
+    // 16x16 checkerboard texture
+    std::array<uint32_t, 16 * 16> pixels;
     for (int x = 0; x < 16; x++) {
         for (int y = 0; y < 16; y++) {
-            constexpr uint32_t magenta = 0xFF00FFFF;
+            //constexpr uint32_t magenta = 0xFF00FFFF;
+            constexpr uint32_t magenta = std::byteswap(0xFF00FFFF);
             pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
         }
     }
