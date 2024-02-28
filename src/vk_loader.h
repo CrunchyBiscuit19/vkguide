@@ -4,17 +4,6 @@
 #include <unordered_map>
 #include <vk_types.h>
 
-struct GeoSurface {
-    uint32_t startIndex;
-    uint32_t count;
-};
-
-struct MeshAsset {
-    std::string name;
-    std::vector<GeoSurface> surfaces; // Mesh primitives, one material per primitve
-    GPUMeshBuffers meshBuffers;
-};
-
 // forward declaration
 class VulkanEngine;
 
