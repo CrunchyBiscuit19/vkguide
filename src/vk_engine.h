@@ -139,6 +139,9 @@ private:
     MaterialInstance defaultData;
     GLTFMetallic_Roughness metalRoughMaterial;
 
+    DrawContext mainDrawContext;
+    std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+
     void init_imgui();
 
     void init_vulkan();
@@ -169,4 +172,6 @@ private:
     void draw_background(VkCommandBuffer cmd) const;
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
     void draw_geometry(VkCommandBuffer cmd);
+
+    void update_scene();
 };

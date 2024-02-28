@@ -72,6 +72,12 @@ void VulkanEngine::cleanup()
 
         _mainDeletionQueue.flush();
 
+        // temp clean rough metal resources here
+        vkDestroyPipelineLayout(_device, metalRoughMaterial.opaquePipeline.layout, nullptr);
+        // 1 descriptor set layout: materialLayout
+        vkDestroyPipeline(_device, metalRoughMaterial.opaquePipeline.pipeline, nullptr);
+        vkDestroyPipeline(_device, metalRoughMaterial.transparentPipeline.pipeline, nullptr);
+
         for (const FrameData& frame : _frames) {
             vkDestroyFence(_device, frame._renderFence, nullptr);
             vkDestroySemaphore(_device, frame._renderSemaphore, nullptr);
@@ -125,64 +131,58 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
-
-    // Set dynamic viewport and scissor
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = static_cast<float>(_drawExtent.width);
-    viewport.height = static_cast<float>(_drawExtent.height);
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = _drawExtent.width;
-    scissor.extent.height = _drawExtent.height;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
     // Allocate a new uniform buffer for the scene data
     // GPU can load small amounts of data into its caches with VMA_MEMORY_USAGE_CPU_TO_GPU
     const AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
+    // Scene data binding
     auto* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
     *sceneUniformData = sceneData;
-    {
-        VkDescriptorSet globalShaderDescriptorSet = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
-        DescriptorWriter writer;
-        writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        writer.update_set(_device, globalShaderDescriptorSet);
+    VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
+    DescriptorWriter writer;
+    writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.update_set(_device, globalDescriptor);
+
+    for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces) {
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
+
+        // Set dynamic viewport
+        VkViewport viewport = {};
+        viewport.x = 0;
+        viewport.y = 0;
+        viewport.width = static_cast<float>(_drawExtent.width);
+        viewport.height = static_cast<float>(_drawExtent.height);
+        viewport.minDepth = 0.f;
+        viewport.maxDepth = 1.f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        // Set dynamic scissor
+        VkRect2D scissor = {};
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+        scissor.extent.width = _drawExtent.width;
+        scissor.extent.height = _drawExtent.height;
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
+
+        GPUDrawPushConstants pushConstants;
+        pushConstants.vertexBuffer = draw.vertexBufferAddress;
+        pushConstants.worldMatrix = draw.transform;
+        vkCmdPushConstants(cmd, draw.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+        vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
     }
-
-    // Texture binding
-    VkDescriptorSet imageSet = get_current_frame()._frameDescriptors.allocate(_device, _singleImageDescriptorLayout);
-    {
-        DescriptorWriter writer;
-        writer.write_image(0, _errorCheckerboardImage.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        writer.update_set(_device, imageSet);
-    }
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipelineLayout, 0, 1, &imageSet, 0, nullptr);
-
-    GPUDrawPushConstants push_constants;
-    const glm::mat4 view = glm::translate(glm::mat4(1.f), glm::vec3 { 0, 0, -5 });
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height), 10000.f, 0.1f);
-    projection[1][1] *= -1;
-    push_constants.worldMatrix = projection * view;
-    push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
-
-    vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-
-    vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
 
     vkCmdEndRendering(cmd);
 }
 
 void VulkanEngine::draw()
 {
+    update_scene();
+
     // Wait until the gpu has finished rendering the last frame (become signalled), or until timeout of 1 second (in nanoseconds).
     VK_CHECK(vkWaitForFences(_device, 1, &(get_current_frame()._renderFence), true, 1000000000));
     VK_CHECK(vkResetFences(_device, 1, &(get_current_frame()._renderFence))); // Flip to unsignalled
@@ -869,6 +869,16 @@ void VulkanEngine::init_default_data()
 
     defaultData = metalRoughMaterial.write_material(_device, MaterialPass::MainColor, materialResources, _globalDescriptorAllocator);
 
+    for (const auto& m : testMeshes) {
+        std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
+        newNode->mesh = m;
+        newNode->localTransform = glm::mat4 { 1.f };
+        newNode->worldTransform = glm::mat4 { 1.f };
+        for (auto& s : newNode->mesh->surfaces)
+            s.material = std::make_shared<GLTFMaterial>(defaultData);
+        loadedNodes[m->name] = std::move(newNode);
+    }
+
     _mainDeletionQueue.push_function([&]() {
         vkDestroySampler(_device, _defaultSamplerLinear, nullptr);
         vkDestroySampler(_device, _defaultSamplerNearest, nullptr);
@@ -1113,5 +1123,27 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
         ctx.OpaqueSurfaces.push_back(def);
     }
 
+    // Call the Node version of the function to continue recursive drawing
     Node::Draw(topMatrix, ctx);
+}
+
+void VulkanEngine::update_scene()
+{
+    mainDrawContext.OpaqueSurfaces.clear();
+
+    loadedNodes["Suzanne"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
+    sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
+    sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
+    sceneData.proj[1][1] *= -1;
+    sceneData.viewproj = sceneData.proj * sceneData.view;
+
+    sceneData.ambientColor = glm::vec4(.1f);
+    sceneData.sunlightColor = glm::vec4(1.f);
+    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
+
+    for (int x = -3; x < 3; x++) {
+        glm::mat4 scale = glm::scale(glm::mat4 { 1.f }, glm::vec3 { 0.2 });
+        glm::mat4 translation = glm::translate(glm::mat4 { 1.f }, glm::vec3 { x, 1, 0 });
+        loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
+    }
 }
