@@ -15,6 +15,7 @@
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 #include <vk_mem_alloc.h>
+#include <magic_enum.hpp>
 
 #include <bit>
 #include <chrono>
@@ -35,7 +36,7 @@ VulkanEngine& VulkanEngine::Get()
 
 void VulkanEngine::init()
 {
-    // only one engine initialization is allowed with the application.
+    // Only one engine initialization is allowed with the application.
     assert(loadedEngine == nullptr);
     loadedEngine = this;
 
@@ -60,8 +61,9 @@ void VulkanEngine::init()
     init_pipelines();
     init_imgui();
     init_default_data();
+    mainCamera.init();
 
-    // everything went fine
+    // Everything went fine
     _isInitialized = true;
 }
 
@@ -91,7 +93,7 @@ void VulkanEngine::cleanup()
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
         vkDestroyDevice(_device, nullptr);
 
-        vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
+        vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
         vkDestroyInstance(_instance, nullptr);
         SDL_DestroyWindow(_window);
 
@@ -312,16 +314,16 @@ void VulkanEngine::run()
                 bQuit = true;
             if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_MINIMIZED)
-                    stop_rendering = true;
+                    _stopRendering = true;
                 if (e.window.event == SDL_WINDOWEVENT_RESTORED)
-                    stop_rendering = false;
+                    _stopRendering = false;
             }
-            // if (e.type == SDL_KEYDOWN) fmt::print("The answer is {}.\n", SDL_GetScancodeName(e.key.keysym.scancode));
             ImGui_ImplSDL2_ProcessEvent(&e);
+            mainCamera.processSDLEvent(e);
         }
 
         // Do not draw if we are minimized
-        if (stop_rendering) {
+        if (_stopRendering) {
             // Throttle the speed to avoid the endless spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
@@ -338,18 +340,14 @@ void VulkanEngine::run()
         if (ImGui::Begin("background")) {
             const ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
 
-            ImGui::Text("Selected effect: %s", selected.name);
-            /*ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, static_cast<int>(backgroundEffects.size()) - 1);
-            ImGui::SliderFloat("Starfield Threshold", &selected.data.data1.x, 0.f, 1.f);
-            ImGui::SliderFloat("X Rate", &selected.data.data1.y, 0.f, 1.f);
-            ImGui::SliderFloat("Y Rate", &selected.data.data1.z, 0.f, 1.f);
-            ImGui::SliderFloat("Blending", &selected.data.data2.w, 0.f, 1.0f);
-            ImGui::SliderFloat("Background Alpha", &selected.data.data1.w, 0.f, 1.0f);*/
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
+            ImGui::Text("Camera Mode: %s [F1 to toggle]", magic_enum::enum_name(mainCamera.movementMode).data());
 
             ImGui::End();
         }
         ImGui::Render();
+
+        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
         draw();
     }
@@ -441,7 +439,7 @@ void VulkanEngine::init_vulkan()
     const vkb::Instance vkb_inst = inst_ret.value();
 
     _instance = vkb_inst.instance;
-    _debug_messenger = vkb_inst.debug_messenger;
+    _debugMessenger = vkb_inst.debug_messenger;
 
     SDL_Vulkan_CreateSurface(_window, _instance, &_surface);
 
@@ -1146,4 +1144,12 @@ void VulkanEngine::update_scene()
         glm::mat4 translation = glm::translate(glm::mat4 { 1.f }, glm::vec3 { x, 1, 0 });
         loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
     }
+
+    mainCamera.update();
+    const glm::mat4 view = mainCamera.getViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
+    projection[1][1] *= -1;
+    sceneData.view = view;
+    sceneData.proj = projection;
+    sceneData.viewproj = projection * view;
 }

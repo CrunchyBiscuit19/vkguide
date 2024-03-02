@@ -6,6 +6,7 @@
 #include <vk_descriptors.h>
 #include <vk_loader.h>
 #include <vk_types.h>
+#include <camera.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -18,7 +19,7 @@ struct GLTFMetallic_Roughness {
     struct MaterialConstants {
         glm::vec4 colorFactors;
         glm::vec4 metal_rough_factors;
-        // padding, we need it anyway for uniform buffers
+        // Padding, we need it anyway for uniform buffers
         glm::vec4 extra[14];
     };
 
@@ -62,14 +63,14 @@ struct DrawContext {
 
 class VulkanEngine {
 public:
+    bool _isInitialized { false };
+    bool _stopRendering { false };
+
     struct SDL_Window* _window { nullptr };
     VkExtent2D _windowExtent { 1700, 900 };
 
-    bool _isInitialized { false };
-    bool stop_rendering { false };
-
     VkInstance _instance; // Vulkan library handle
-    VkDebugUtilsMessengerEXT _debug_messenger; // Vulkan debug output handle
+    VkDebugUtilsMessengerEXT _debugMessenger; // Vulkan debug output handle
 
     VkPhysicalDevice _chosenGPU; // GPU chosen as the default device
     VkDevice _device; // Vulkan device for commands
@@ -94,6 +95,12 @@ public:
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
 
+    DescriptorAllocatorGrowable _globalDescriptorAllocator;
+    VkDescriptorSet _drawImageDescriptors;
+    VkDescriptorSetLayout _drawImageDescriptorLayout;
+    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+    VkDescriptorSetLayout _singleImageDescriptorLayout;
+
     AllocatedImage _whiteImage;
     AllocatedImage _blackImage;
     AllocatedImage _greyImage;
@@ -106,15 +113,11 @@ public:
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
 
+    Camera mainCamera;
+
     int _frameNumber { 0 };
     FrameData _frames[FRAME_OVERLAP];
     FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
-
-    DescriptorAllocatorGrowable _globalDescriptorAllocator;
-    VkDescriptorSet _drawImageDescriptors;
-    VkDescriptorSetLayout _drawImageDescriptorLayout;
-    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
-    VkDescriptorSetLayout _singleImageDescriptorLayout;
 
     VkFence _immFence;
     VkCommandBuffer _immCommandBuffer;
