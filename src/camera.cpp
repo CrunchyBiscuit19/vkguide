@@ -8,6 +8,36 @@ void Camera::init()
     yaw = 0;
     keyState = SDL_GetKeyboardState(nullptr);
     movementMode = MINECRAFT;
+    movementFuns[MINECRAFT] = [this]() -> void {
+        const SDL_Keymod modState = SDL_GetModState();
+        if (keyState[SDL_SCANCODE_W]) {
+            if (modState & KMOD_LSHIFT)
+                velocity.y = 1;
+            else
+                velocity.z = -1;
+        }
+        if (keyState[SDL_SCANCODE_S]) {
+            if (modState & KMOD_LSHIFT)
+                velocity.y = -1;
+            else
+                velocity.z = 1;
+        }
+        if (keyState[SDL_SCANCODE_A])
+            velocity.x = -1;
+        if (keyState[SDL_SCANCODE_D])
+            velocity.x = 1;
+    };
+    movementFuns[LOOKANDGO] = [this]() -> void {
+        const SDL_Keymod modState = SDL_GetModState();
+        if (keyState[SDL_SCANCODE_W])
+            velocity.z = -1;
+        if (keyState[SDL_SCANCODE_S])
+            velocity.z = 1;
+        if (keyState[SDL_SCANCODE_A])
+            velocity.x = -1;
+        if (keyState[SDL_SCANCODE_D])
+            velocity.x = 1;
+    };
 }
 
 glm::mat4 Camera::getViewMatrix() const
@@ -54,22 +84,7 @@ void Camera::processSDLEvent(const SDL_Event& e)
     const SDL_Keymod modState = SDL_GetModState();
     velocity = glm::vec3(0.f);
 
-    if (keyState[SDL_SCANCODE_W]) {
-        if (modState & KMOD_LSHIFT)
-            velocity.y = 1;
-        else
-            velocity.z = -1;
-    }
-    if (keyState[SDL_SCANCODE_S]) {
-        if (modState & KMOD_LSHIFT)
-            velocity.y = -1;
-        else
-            velocity.z = 1;
-    }
-    if (keyState[SDL_SCANCODE_A])
-        velocity.x = -1;
-    if (keyState[SDL_SCANCODE_D])
-        velocity.x = 1;
+    movementFuns[movementMode]();
 
     if (keyState[SDL_SCANCODE_F1]) {
         switch (movementMode) {

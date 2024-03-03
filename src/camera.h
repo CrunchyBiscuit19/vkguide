@@ -1,10 +1,11 @@
 #pragma once
 
+#include <vk_types.h>
+
 #include <SDL_events.h>
 #include <glm/gtx/quaternion.hpp>
 
-#include <camera.h>
-#include <vk_types.h>
+#include <functional>
 
 enum MovementMode
 {
@@ -22,6 +23,7 @@ public:
     const Uint8* keyState;
     SDL_bool relativeMode { SDL_TRUE };
     MovementMode movementMode;
+    std::unordered_map<MovementMode, std::function<void()>> movementFuns;
 
     void init();
 
