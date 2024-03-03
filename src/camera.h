@@ -20,7 +20,7 @@ public:
     float yaw { 0.f };
 
     const Uint8* keyState;
-    
+    SDL_bool relativeMode { SDL_TRUE };
     MovementMode movementMode;
 
     void init();

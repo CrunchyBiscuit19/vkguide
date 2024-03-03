@@ -1,5 +1,3 @@
-#include <glm/gtx/transform.hpp>
-
 #include "camera.h"
 
 void Camera::init()
@@ -9,7 +7,7 @@ void Camera::init()
     pitch = 0;
     yaw = 0;
     keyState = SDL_GetKeyboardState(nullptr);
-    movementMode = LOOKANDGO;
+    movementMode = MINECRAFT;
 }
 
 glm::mat4 Camera::getViewMatrix() const
@@ -84,7 +82,10 @@ void Camera::processSDLEvent(const SDL_Event& e)
         }
     }
 
-    if (e.type == SDL_MOUSEMOTION) {
+    if (keyState[SDL_SCANCODE_F2])
+        relativeMode = static_cast<SDL_bool>(!relativeMode);
+
+    if (e.type == SDL_MOUSEMOTION && relativeMode) {
         yaw += static_cast<float>(e.motion.xrel) / 200.f;
         pitch -= static_cast<float>(e.motion.yrel) / 200.f;
     }

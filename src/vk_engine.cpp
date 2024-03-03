@@ -14,8 +14,8 @@
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
-#include <vk_mem_alloc.h>
 #include <magic_enum.hpp>
+#include <vk_mem_alloc.h>
 
 #include <bit>
 #include <chrono>
@@ -318,8 +318,8 @@ void VulkanEngine::run()
                 if (e.window.event == SDL_WINDOWEVENT_RESTORED)
                     _stopRendering = false;
             }
-            ImGui_ImplSDL2_ProcessEvent(&e);
             mainCamera.processSDLEvent(e);
+            ImGui_ImplSDL2_ProcessEvent(&e);
         }
 
         // Do not draw if we are minimized
@@ -329,6 +329,8 @@ void VulkanEngine::run()
             continue;
         }
 
+        // Misc options
+        SDL_SetRelativeMouseMode(mainCamera.relativeMode);
         if (_resize_requested)
             resize_swapchain();
 
@@ -336,18 +338,14 @@ void VulkanEngine::run()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame(_window);
         ImGui::NewFrame();
-
         if (ImGui::Begin("background")) {
             const ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
-
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
-            ImGui::Text("Camera Mode: %s [F1 to toggle]", magic_enum::enum_name(mainCamera.movementMode).data());
-
+            ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mainCamera.movementMode).data());
+            ImGui::Text("[F2] Mouse Mode: %s", (mainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
             ImGui::End();
         }
         ImGui::Render();
-
-        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
         draw();
     }
