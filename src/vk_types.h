@@ -10,6 +10,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <tuple>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,6 @@ struct DeletionQueue {
     std::deque<std::function<void()>> deletors;
 
     void push_function(std::function<void()>&& function) { deletors.push_back(function); }
-
     void flush()
     {
         // Reverse iterate the deletion queue to execute all the functions
@@ -35,6 +35,105 @@ struct DeletionQueue {
         deletors.clear();
     }
 };
+
+template <class T1>
+struct DeviceResource
+{
+    VkDevice device;
+    T1 object;
+    VkAllocationCallbacks* allocationCallbacks;
+};
+
+template <class T1>
+struct InstanceResource
+{
+    VkInstance device;
+    T1 object;
+    VkAllocationCallbacks* allocationCallbacks;
+};
+
+template <class T1>
+struct VmaResource
+{
+    VmaAllocator allocator;
+    T1 object;
+    VmaAllocation allocation;
+};
+
+template <class T0>
+class VulkanDeletable {
+    std::vector<T0> _resources;
+
+public:
+    void pushResource(T0& resource)
+    {
+        _resources.emplace_back(resource);
+    }
+    virtual void flush() { }
+
+    // VkDescriptorSetLayout
+    // VkDescriptorPool
+    // VkSampler
+    // VkPipelineLayout
+    // VkPipeline
+    // VkFence
+    // VkSemaphore
+    // VkCommandPool
+    // VkSwapchainKHR
+    // VkImageView
+    // VkSurfaceKHR
+    // VkDebugUtilsMessengerEXT
+};
+
+template <>
+inline void VulkanDeletable<DeviceResource<VkDescriptorSetLayout>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroyDescriptorSetLayout(resource.device, resource.object, resource.allocationCallbacks);
+}
+template <>
+inline void VulkanDeletable<DeviceResource<VkPipelineLayout>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroyPipelineLayout(resource.device, resource.object, resource.allocationCallbacks);
+}
+template <>
+inline void VulkanDeletable<DeviceResource<VkPipeline>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroyPipeline(resource.device, resource.object, resource.allocationCallbacks);
+}
+template <>
+inline void VulkanDeletable<DeviceResource<VkFence>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroyFence(resource.device, resource.object, resource.allocationCallbacks);
+}
+template <>
+inline void VulkanDeletable<DeviceResource<VkSemaphore>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroySemaphore(resource.device, resource.object, resource.allocationCallbacks);
+}
+template <>
+inline void VulkanDeletable<DeviceResource<VkCommandPool>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroyCommandPool(resource.device, resource.object, resource.allocationCallbacks);
+}
+
+template <>
+inline void VulkanDeletable<VmaResource<VkImage>>::flush()
+{
+    for (const auto& resource : _resources)
+        vmaDestroyImage(resource.allocator, resource.object, resource.allocation);
+}
+template <>
+inline void VulkanDeletable<VmaResource<VkBuffer>>::flush()
+{
+    for (const auto& resource : _resources)
+        vmaDestroyBuffer(resource.allocator, resource.object, resource.allocation);
+}
 
 struct AllocatedImage {
     VkImage image;
@@ -58,8 +157,19 @@ struct FrameData {
     VkSemaphore _swapchainSemaphore, _renderSemaphore;
     VkFence _renderFence;
 
-    DeletionQueue _deletionQueue;
     DescriptorAllocatorGrowable _frameDescriptors;
+
+    VulkanDeletable<DeviceResource<VkFence>> fenceDeletion;
+    VulkanDeletable<DeviceResource<VkSemaphore>> semaphoreDeletion;
+    VulkanDeletable<DeviceResource<VkCommandPool>> commandPoolDeletion;
+
+    void cleanup(VkDevice device)
+    {
+        fenceDeletion.flush();
+        semaphoreDeletion.flush();
+        commandPoolDeletion.flush();
+        _frameDescriptors.destroy_pools(device);
+    }
 };
 
 struct Vertex {

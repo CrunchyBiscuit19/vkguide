@@ -74,26 +74,17 @@ void VulkanEngine::cleanup()
 
         _mainDeletionQueue.flush();
 
-        // temp clean rough metal resources here
-        vkDestroyPipelineLayout(_device, metalRoughMaterial.opaquePipeline.layout, nullptr);
-        // 1 descriptor set layout: materialLayout
-        vkDestroyPipeline(_device, metalRoughMaterial.opaquePipeline.pipeline, nullptr);
-        vkDestroyPipeline(_device, metalRoughMaterial.transparentPipeline.pipeline, nullptr);
+        metalRoughMaterial.clear_resources(_device);
 
-        for (const FrameData& frame : _frames) {
-            vkDestroyFence(_device, frame._renderFence, nullptr);
-            vkDestroySemaphore(_device, frame._renderSemaphore, nullptr);
-            vkDestroySemaphore(_device, frame._swapchainSemaphore, nullptr);
-
-            vkDestroyCommandPool(_device, frame._commandPool, nullptr);
-        }
+        for (FrameData& frame : _frames)
+            frame.cleanup(_device);
 
         destroy_swapchain();
 
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
-        vkDestroyDevice(_device, nullptr);
-
         vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
+
+    	vkDestroyDevice(_device, nullptr);
         vkDestroyInstance(_instance, nullptr);
         SDL_DestroyWindow(_window);
 
@@ -189,7 +180,6 @@ void VulkanEngine::draw()
     VK_CHECK(vkWaitForFences(_device, 1, &(get_current_frame()._renderFence), true, 1000000000));
     VK_CHECK(vkResetFences(_device, 1, &(get_current_frame()._renderFence))); // Flip to unsignalled
 
-    get_current_frame()._deletionQueue.flush();
     get_current_frame()._frameDescriptors.clear_pools(_device);
 
     // Request image from the swapchain
@@ -469,7 +459,7 @@ void VulkanEngine::init_vulkan()
     _graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 
-    // Initialize the memory allocator
+    // Initialize the memory _allocator
     VmaAllocatorCreateInfo allocatorInfo = {};
     allocatorInfo.physicalDevice = _chosenGPU;
     allocatorInfo.device = _device;
@@ -585,11 +575,12 @@ void VulkanEngine::init_commands()
     // One command pool and command buffer per frame stored
     for (FrameData& frame : _frames) {
         VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &frame._commandPool));
-
         // Allocate the default command buffer that we will use for rendering
         VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(frame._commandPool, 1);
-
         VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &frame._mainCommandBuffer));
+
+        DeviceResource commandPoolResource = { _device, frame._commandPool, nullptr };
+        frame.commandPoolDeletion.pushResource(commandPoolResource);
     }
 
     // Immediate submits
@@ -614,6 +605,13 @@ void VulkanEngine::init_sync_structures()
         VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &frame._renderFence));
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._swapchainSemaphore));
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._renderSemaphore));
+
+        DeviceResource fenceResource = { _device, frame._renderFence, nullptr };
+        frame.fenceDeletion.pushResource(fenceResource);
+        DeviceResource swapchainSemaphoreResource = { _device, frame._swapchainSemaphore, nullptr };
+        DeviceResource renderSemaphoreResource = { _device, frame._renderSemaphore, nullptr };
+        frame.semaphoreDeletion.pushResource(swapchainSemaphoreResource);
+        frame.semaphoreDeletion.pushResource(renderSemaphoreResource);
     }
 
     // Immediate fence
@@ -667,10 +665,6 @@ void VulkanEngine::init_descriptors()
 
         _frames[i]._frameDescriptors = DescriptorAllocatorGrowable {};
         _frames[i]._frameDescriptors.init(_device, 1000, frame_sizes);
-
-        _mainDeletionQueue.push_function([&, i]() {
-            _frames[i]._frameDescriptors.destroy_pools(_device);
-        });
     }
 
     _mainDeletionQueue.push_function([&]() {
@@ -1028,6 +1022,35 @@ void VulkanEngine::destroy_image(const AllocatedImage& img) const
     vmaDestroyImage(_allocator, img.image, img.allocation);
 }
 
+void VulkanEngine::update_scene()
+{
+    mainDrawContext.OpaqueSurfaces.clear();
+
+    loadedNodes["Suzanne"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
+    sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
+    sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
+    sceneData.proj[1][1] *= -1;
+    sceneData.viewproj = sceneData.proj * sceneData.view;
+
+    sceneData.ambientColor = glm::vec4(.1f);
+    sceneData.sunlightColor = glm::vec4(1.f);
+    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
+
+    for (int x = -3; x < 3; x++) {
+        glm::mat4 scale = glm::scale(glm::mat4 { 1.f }, glm::vec3 { 0.2 });
+        glm::mat4 translation = glm::translate(glm::mat4 { 1.f }, glm::vec3 { x, 1, 0 });
+        loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
+    }
+
+    mainCamera.update();
+    const glm::mat4 view = mainCamera.getViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
+    projection[1][1] *= -1;
+    sceneData.view = view;
+    sceneData.proj = projection;
+    sceneData.viewproj = projection * view;
+}
+
 void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
 {
     VkShaderModule meshFragShader;
@@ -1081,6 +1104,38 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
 
     vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
     vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
+
+    DeviceResource layoutResource = {
+        engine->_device,
+        newLayout,
+        nullptr
+    };
+    pipelineLayoutDeletion.pushResource(layoutResource);
+    DeviceResource opaquePipelineResource = {
+        engine->_device,
+        opaquePipeline.pipeline,
+        nullptr
+    };
+    DeviceResource transparentPipelineResource = {
+        engine->_device,
+        transparentPipeline.pipeline,
+        nullptr
+    };
+    pipelineDeletion.pushResource(opaquePipelineResource);
+    pipelineDeletion.pushResource(transparentPipelineResource);
+    DeviceResource materialLayoutResource = {
+        engine->_device,
+        materialLayout,
+        nullptr
+    };
+    descriptorSetLayoutDeletion.pushResource(materialLayoutResource);
+}
+
+void GLTFMetallic_Roughness::clear_resources(VkDevice device)
+{
+    descriptorSetLayoutDeletion.flush();
+    pipelineLayoutDeletion.flush();
+    pipelineDeletion.flush();
 }
 
 MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator)
@@ -1123,31 +1178,3 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
     Node::Draw(topMatrix, ctx);
 }
 
-void VulkanEngine::update_scene()
-{
-    mainDrawContext.OpaqueSurfaces.clear();
-
-    loadedNodes["Suzanne"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
-    sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
-    sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
-    sceneData.proj[1][1] *= -1;
-    sceneData.viewproj = sceneData.proj * sceneData.view;
-
-    sceneData.ambientColor = glm::vec4(.1f);
-    sceneData.sunlightColor = glm::vec4(1.f);
-    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
-
-    for (int x = -3; x < 3; x++) {
-        glm::mat4 scale = glm::scale(glm::mat4 { 1.f }, glm::vec3 { 0.2 });
-        glm::mat4 translation = glm::translate(glm::mat4 { 1.f }, glm::vec3 { x, 1, 0 });
-        loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
-    }
-
-    mainCamera.update();
-    const glm::mat4 view = mainCamera.getViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
-    projection[1][1] *= -1;
-    sceneData.view = view;
-    sceneData.proj = projection;
-    sceneData.viewproj = projection * view;
-}

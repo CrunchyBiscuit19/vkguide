@@ -34,6 +34,10 @@ struct GLTFMetallic_Roughness {
 
     DescriptorWriter writer;
 
+    VulkanDeletable<DeviceResource<VkDescriptorSetLayout>> descriptorSetLayoutDeletion;
+    VulkanDeletable<DeviceResource<VkPipelineLayout>> pipelineLayoutDeletion;
+    VulkanDeletable<DeviceResource<VkPipeline>> pipelineDeletion;
+
     void build_pipelines(VulkanEngine* engine);
     void clear_resources(VkDevice device);
 
