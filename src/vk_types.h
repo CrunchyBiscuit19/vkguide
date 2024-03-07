@@ -121,6 +121,11 @@ inline void VulkanResource<VkImageView>::destroy()
     vkDestroyImageView(device, object, allocationCallbacks);
 }
 template <>
+inline void VulkanResource<VkSampler>::destroy()
+{
+    vkDestroySampler(device, object, allocationCallbacks);
+}
+template <>
 inline void VulkanResource<VkImage>::destroy()
 {
     vmaDestroyImage(allocator, object, allocation);

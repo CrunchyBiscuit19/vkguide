@@ -93,6 +93,11 @@ public:
     VkPipeline _meshPipeline;
     std::vector<ComputeEffect> backgroundEffects;
     int currentBackgroundEffect { 0 };
+    struct PipelineDeletionQueue
+    {
+        DeleteQueue<VkPipelineLayout> pipelineLayouts;
+        DeleteQueue<VkPipeline> pipelines;
+    } _pipelineDeletionQueue;
 
     VkSwapchainKHR _swapchain;
     VkFormat _swapchainImageFormat;
@@ -111,6 +116,10 @@ public:
     VkDescriptorSetLayout _drawImageDescriptorLayout;
     VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
     VkDescriptorSetLayout _singleImageDescriptorLayout;
+    struct DescriptorDeletionQueue
+    {
+        DeleteQueue<VkDescriptorSetLayout> descriptorSetLayouts;
+    } _descriptorDeletionQueue;
 
     AllocatedImage _whiteImage;
     AllocatedImage _blackImage;
@@ -120,9 +129,17 @@ public:
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
+    struct ImageDeletionQueue
+    {
+        DeleteQueue<VkImage> images;
+        DeleteQueue<VkImageView> imageViews;
+    } _imageDeletionQueue;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
+    struct SamplerDeletionQueue {
+        DeleteQueue<VkSampler> samplers;
+    } _samplerDeletionQueue;
 
     Camera mainCamera;
 
@@ -134,15 +151,31 @@ public:
     VkCommandBuffer _immCommandBuffer;
     VkCommandPool _immCommandPool;
     VkDescriptorPool _imguiDescriptorPool;
+    struct ImmediateDeletionQueue {
+        DeleteQueue<VkFence> fences;
+        DeleteQueue<VkCommandPool> commandPools;
+    } _immediateDeletionQueue;
+
+    struct BufferDeletionQueue
+    {
+        DeleteQueue<VkBuffer> buffers;
+    } _genericBufferDeletionQueue;
 
     DeletionQueue _mainDeletionQueue;
 
     static VulkanEngine& Get();
     void init(); // initializes everything in the engine
 
+    void cleanup_immediate();
+    void cleanup_swapchain();
+    void cleanup_descriptors();
+    void cleanup_pipelines();
+    void cleanup_samplers();
+    void cleanup_images();
+    void cleanup_buffers();
+    void cleanup_imgui() const;
     void cleanup_misc() const;
     void cleanup_core() const;
-    void cleanup_imgui() const;
     void cleanup(); // shuts down the engine
 
     void draw(); // draw loop
@@ -183,11 +216,11 @@ private:
     void init_default_data();
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-    void destroy_buffer(const AllocatedBuffer& buffer) const;
+    void destroy_buffer(const AllocatedBuffer& buffer);
 
     AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-    void destroy_image(const AllocatedImage& img) const;
+    void destroy_image(const AllocatedImage& img);
 
     void draw_background(VkCommandBuffer cmd) const;
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
