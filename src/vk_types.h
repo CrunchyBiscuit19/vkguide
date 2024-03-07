@@ -48,8 +48,8 @@ struct VulkanResource {
         : device(device)
         , object(object)
         , allocationCallbacks(allocationCallback)
-		, allocator(allocator)
-		, allocation(allocation)
+        , allocator(allocator)
+        , allocation(allocation)
     {
     }
     virtual void destroy()
@@ -62,11 +62,7 @@ class DeleteQueue {
     std::vector<VulkanResource<T0>> _resources;
 
 public:
-    void push_resource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback)
-    {
-        _resources.emplace_back(device, object, allocationCallback);
-    }
-    void push_resource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback, VmaAllocator allocator, VmaAllocation allocation)
+    void push_resource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback, VmaAllocator allocator = nullptr, VmaAllocation allocation = nullptr)
     {
         _resources.emplace_back(device, object, allocationCallback, allocator, allocation);
     }
@@ -74,6 +70,7 @@ public:
     {
         for (auto& resource : _resources)
             resource.destroy();
+        _resources.clear();
     }
 };
 
@@ -158,15 +155,17 @@ struct FrameData {
 
     DescriptorAllocatorGrowable _frameDescriptors;
 
-    DeleteQueue<VkFence> fenceDeletion;
-    DeleteQueue<VkSemaphore> semaphoreDeletion;
-    DeleteQueue<VkCommandPool> commandPoolDeletion;
+    struct FrameDeletionQueue {
+        DeleteQueue<VkFence> fenceDeletion;
+        DeleteQueue<VkSemaphore> semaphoreDeletion;
+        DeleteQueue<VkCommandPool> commandPoolDeletion;
+    } _frameDeletionQueue;
 
     void cleanup(VkDevice device)
     {
-        fenceDeletion.flush();
-        semaphoreDeletion.flush();
-        commandPoolDeletion.flush();
+        _frameDeletionQueue.fenceDeletion.flush();
+        _frameDeletionQueue.semaphoreDeletion.flush();
+        _frameDeletionQueue.commandPoolDeletion.flush();
         _frameDescriptors.destroy_pools(device);
     }
 };

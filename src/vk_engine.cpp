@@ -500,6 +500,11 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
     _swapchain = vkbSwapchain.swapchain;
     _swapchainImages = vkbSwapchain.get_images().value();
     _swapchainImageViews = vkbSwapchain.get_image_views().value();
+
+    _swapchainDeletionQueue.swapchains.push_resource(_device, _swapchain, nullptr);
+	for (const auto& swapchainImageView : _swapchainImageViews)
+        _swapchainDeletionQueue.imageViews.push_resource(_device, swapchainImageView, nullptr);
+    // Images created by the swap chain will be automatically cleaned up once it has been destroyed.
 }
 
 void VulkanEngine::init_swapchain()
@@ -553,11 +558,10 @@ void VulkanEngine::init_swapchain()
     });
 }
 
-void VulkanEngine::destroy_swapchain() const
+void VulkanEngine::destroy_swapchain()
 {
-    vkDestroySwapchainKHR(_device, _swapchain, nullptr);
-    for (const VkImageView& swapchainImageView : _swapchainImageViews)
-        vkDestroyImageView(_device, swapchainImageView, nullptr);
+    _swapchainDeletionQueue.swapchains.flush();
+    _swapchainDeletionQueue.imageViews.flush();
 }
 
 void VulkanEngine::resize_swapchain()
@@ -589,7 +593,7 @@ void VulkanEngine::init_commands()
         VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(frame._commandPool, 1);
         VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &frame._mainCommandBuffer));
 
-        frame.commandPoolDeletion.push_resource(_device, frame._commandPool, nullptr);
+        frame._frameDeletionQueue.commandPoolDeletion.push_resource(_device, frame._commandPool, nullptr);
     }
 
     // Immediate submits
@@ -615,9 +619,9 @@ void VulkanEngine::init_sync_structures()
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._swapchainSemaphore));
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._renderSemaphore));
 
-        frame.fenceDeletion.push_resource(_device, frame._renderFence, nullptr);
-        frame.semaphoreDeletion.push_resource(_device, frame._swapchainSemaphore, nullptr);
-        frame.semaphoreDeletion.push_resource(_device, frame._renderSemaphore, nullptr);
+        frame._frameDeletionQueue.fenceDeletion.push_resource(_device, frame._renderFence, nullptr);
+        frame._frameDeletionQueue.semaphoreDeletion.push_resource(_device, frame._swapchainSemaphore, nullptr);
+        frame._frameDeletionQueue.semaphoreDeletion.push_resource(_device, frame._renderSemaphore, nullptr);
     }
 
     // Immediate fence
@@ -1111,25 +1115,25 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
     vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
     vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
 
-    pipelineLayoutDeletion.push_resource(engine->_device,
+    _materialDeletionQueue.pipelineLayoutDeletion.push_resource(engine->_device,
         newLayout,
         nullptr);
-    pipelineDeletion.push_resource(engine->_device,
+    _materialDeletionQueue.pipelineDeletion.push_resource(engine->_device,
         opaquePipeline.pipeline,
         nullptr);
-    pipelineDeletion.push_resource(engine->_device,
+    _materialDeletionQueue.pipelineDeletion.push_resource(engine->_device,
         transparentPipeline.pipeline,
         nullptr);
-    descriptorSetLayoutDeletion.push_resource(engine->_device,
+    _materialDeletionQueue.descriptorSetLayoutDeletion.push_resource(engine->_device,
         materialLayout,
         nullptr);
 }
 
 void GLTFMetallic_Roughness::cleanup_resources(VkDevice device)
 {
-    descriptorSetLayoutDeletion.flush();
-    pipelineLayoutDeletion.flush();
-    pipelineDeletion.flush();
+    _materialDeletionQueue.descriptorSetLayoutDeletion.flush();
+    _materialDeletionQueue.pipelineLayoutDeletion.flush();
+    _materialDeletionQueue.pipelineDeletion.flush();
 }
 
 MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator)

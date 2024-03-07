@@ -34,9 +34,11 @@ struct GLTFMetallic_Roughness {
 
     DescriptorWriter writer;
 
-    DeleteQueue<VkDescriptorSetLayout> descriptorSetLayoutDeletion;
-    DeleteQueue<VkPipelineLayout> pipelineLayoutDeletion;
-    DeleteQueue<VkPipeline> pipelineDeletion;
+    struct MaterialDeletionQueue {
+        DeleteQueue<VkDescriptorSetLayout> descriptorSetLayoutDeletion;
+        DeleteQueue<VkPipelineLayout> pipelineLayoutDeletion;
+        DeleteQueue<VkPipeline> pipelineDeletion;
+    } _materialDeletionQueue;
 
     void build_pipelines(VulkanEngine* engine);
     void cleanup_resources(VkDevice device);
@@ -98,6 +100,11 @@ public:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
+    struct SwapchainDeletionQueue
+    {
+		DeleteQueue<VkSwapchainKHR> swapchains;
+        DeleteQueue<VkImageView> imageViews;
+    } _swapchainDeletionQueue;
 
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     VkDescriptorSet _drawImageDescriptors;
@@ -113,7 +120,6 @@ public:
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
-    DeleteQueue<VkImage> imageDeletion;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
@@ -160,7 +166,7 @@ private:
 
     void create_swapchain(uint32_t width, uint32_t height);
     void init_swapchain();
-    void destroy_swapchain() const;
+    void destroy_swapchain();
     void resize_swapchain();
 
     void init_commands();
