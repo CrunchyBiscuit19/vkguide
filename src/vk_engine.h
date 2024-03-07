@@ -34,9 +34,9 @@ struct GLTFMetallic_Roughness {
 
     DescriptorWriter writer;
 
-    VulkanDeletable<DeviceResource<VkDescriptorSetLayout>> descriptorSetLayoutDeletion;
-    VulkanDeletable<DeviceResource<VkPipelineLayout>> pipelineLayoutDeletion;
-    VulkanDeletable<DeviceResource<VkPipeline>> pipelineDeletion;
+    DeleteQueue<VkDescriptorSetLayout> descriptorSetLayoutDeletion;
+    DeleteQueue<VkPipelineLayout> pipelineLayoutDeletion;
+    DeleteQueue<VkPipeline> pipelineDeletion;
 
     void build_pipelines(VulkanEngine* engine);
     void cleanup_resources(VkDevice device);
@@ -98,8 +98,6 @@ public:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
-    VulkanDeletable<DeviceResource<VkSwapchainKHR>> _swapchainsDeletable;
-    VulkanDeletable<DeviceResource<VkImageView>> _imageViewsDeletable;
 
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     VkDescriptorSet _drawImageDescriptors;
@@ -115,7 +113,6 @@ public:
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
-	VulkanDeletable<VmaResource<VkImage>> _imagesDeletable;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;

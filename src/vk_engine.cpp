@@ -589,8 +589,7 @@ void VulkanEngine::init_commands()
         VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(frame._commandPool, 1);
         VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &frame._mainCommandBuffer));
 
-        DeviceResource commandPoolResource = { _device, frame._commandPool, nullptr };
-        frame.commandPoolDeletion.pushResource(commandPoolResource);
+        frame.commandPoolDeletion.push_resource(_device, frame._commandPool, nullptr);
     }
 
     // Immediate submits
@@ -616,12 +615,9 @@ void VulkanEngine::init_sync_structures()
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._swapchainSemaphore));
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._renderSemaphore));
 
-        DeviceResource fenceResource = { _device, frame._renderFence, nullptr };
-        frame.fenceDeletion.pushResource(fenceResource);
-        DeviceResource swapchainSemaphoreResource = { _device, frame._swapchainSemaphore, nullptr };
-        DeviceResource renderSemaphoreResource = { _device, frame._renderSemaphore, nullptr };
-        frame.semaphoreDeletion.pushResource(swapchainSemaphoreResource);
-        frame.semaphoreDeletion.pushResource(renderSemaphoreResource);
+        frame.fenceDeletion.push_resource(_device, frame._renderFence, nullptr);
+        frame.semaphoreDeletion.push_resource(_device, frame._swapchainSemaphore, nullptr);
+        frame.semaphoreDeletion.push_resource(_device, frame._renderSemaphore, nullptr);
     }
 
     // Immediate fence
@@ -1115,30 +1111,18 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
     vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
     vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
 
-    DeviceResource layoutResource = {
-        engine->_device,
+    pipelineLayoutDeletion.push_resource(engine->_device,
         newLayout,
-        nullptr
-    };
-    pipelineLayoutDeletion.pushResource(layoutResource);
-    DeviceResource opaquePipelineResource = {
-        engine->_device,
+        nullptr);
+    pipelineDeletion.push_resource(engine->_device,
         opaquePipeline.pipeline,
-        nullptr
-    };
-    DeviceResource transparentPipelineResource = {
-        engine->_device,
+        nullptr);
+    pipelineDeletion.push_resource(engine->_device,
         transparentPipeline.pipeline,
-        nullptr
-    };
-    pipelineDeletion.pushResource(opaquePipelineResource);
-    pipelineDeletion.pushResource(transparentPipelineResource);
-    DeviceResource materialLayoutResource = {
-        engine->_device,
+        nullptr);
+    descriptorSetLayoutDeletion.push_resource(engine->_device,
         materialLayout,
-        nullptr
-    };
-    descriptorSetLayoutDeletion.pushResource(materialLayoutResource);
+        nullptr);
 }
 
 void GLTFMetallic_Roughness::cleanup_resources(VkDevice device)
