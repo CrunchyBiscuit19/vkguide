@@ -39,7 +39,7 @@ struct GLTFMetallic_Roughness {
     VulkanDeletable<DeviceResource<VkPipeline>> pipelineDeletion;
 
     void build_pipelines(VulkanEngine* engine);
-    void clear_resources(VkDevice device);
+    void cleanup_resources(VkDevice device);
 
     MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
@@ -70,7 +70,7 @@ public:
     bool _isInitialized { false };
     bool _stopRendering { false };
 
-    struct SDL_Window* _window { nullptr };
+    SDL_Window* _window { nullptr };
     VkExtent2D _windowExtent { 1700, 900 };
 
     VkInstance _instance; // Vulkan library handle
@@ -98,6 +98,8 @@ public:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
+    VulkanDeletable<DeviceResource<VkSwapchainKHR>> _swapchainsDeletable;
+    VulkanDeletable<DeviceResource<VkImageView>> _imageViewsDeletable;
 
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     VkDescriptorSet _drawImageDescriptors;
@@ -113,6 +115,7 @@ public:
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
+	VulkanDeletable<VmaResource<VkImage>> _imagesDeletable;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
@@ -131,7 +134,11 @@ public:
 
     static VulkanEngine& Get();
     void init(); // initializes everything in the engine
+
+    void cleanup_misc() const;
+    void cleanup_core() const;
     void cleanup(); // shuts down the engine
+
     void draw(); // draw loop
     void run(); // run main loop
 

@@ -67,6 +67,19 @@ void VulkanEngine::init()
     _isInitialized = true;
 }
 
+void VulkanEngine::cleanup_misc() const
+{
+    vkDestroySurfaceKHR(_instance, _surface, nullptr);
+    vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
+}
+
+void VulkanEngine::cleanup_core() const
+{
+    vkDestroyDevice(_device, nullptr);
+    vkDestroyInstance(_instance, nullptr);
+    SDL_DestroyWindow(_window);
+}
+
 void VulkanEngine::cleanup()
 {
     if (_isInitialized) {
@@ -74,19 +87,16 @@ void VulkanEngine::cleanup()
 
         _mainDeletionQueue.flush();
 
-        metalRoughMaterial.clear_resources(_device);
+        metalRoughMaterial.cleanup_resources(_device);
 
         for (FrameData& frame : _frames)
             frame.cleanup(_device);
 
         destroy_swapchain();
 
-        vkDestroySurfaceKHR(_instance, _surface, nullptr);
-        vkb::destroy_debug_utils_messenger(_instance, _debugMessenger);
+        cleanup_misc();
 
-    	vkDestroyDevice(_device, nullptr);
-        vkDestroyInstance(_instance, nullptr);
-        SDL_DestroyWindow(_window);
+        cleanup_core();
 
         // clear engine pointer
         loadedEngine = nullptr;
@@ -1131,7 +1141,7 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
     descriptorSetLayoutDeletion.pushResource(materialLayoutResource);
 }
 
-void GLTFMetallic_Roughness::clear_resources(VkDevice device)
+void GLTFMetallic_Roughness::cleanup_resources(VkDevice device)
 {
     descriptorSetLayoutDeletion.flush();
     pipelineLayoutDeletion.flush();
@@ -1177,4 +1187,3 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
     // Call the Node version of the function to continue recursive drawing
     Node::Draw(topMatrix, ctx);
 }
-

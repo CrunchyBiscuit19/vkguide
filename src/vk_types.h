@@ -70,19 +70,6 @@ public:
         _resources.emplace_back(resource);
     }
     virtual void flush() { }
-
-    // VkDescriptorSetLayout
-    // VkDescriptorPool
-    // VkSampler
-    // VkPipelineLayout
-    // VkPipeline
-    // VkFence
-    // VkSemaphore
-    // VkCommandPool
-    // VkSwapchainKHR
-    // VkImageView
-    // VkSurfaceKHR
-    // VkDebugUtilsMessengerEXT
 };
 
 template <>
@@ -120,6 +107,18 @@ inline void VulkanDeletable<DeviceResource<VkCommandPool>>::flush()
 {
     for (const auto& resource : _resources)
         vkDestroyCommandPool(resource.device, resource.object, resource.allocationCallbacks);
+}
+template<>
+inline void VulkanDeletable<DeviceResource<VkSwapchainKHR>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroySwapchainKHR(resource.device, resource.object, resource.allocationCallbacks);
+}
+template<>
+inline void VulkanDeletable<DeviceResource<VkImageView>>::flush()
+{
+    for (const auto& resource : _resources)
+        vkDestroyImageView(resource.device, resource.object, resource.allocationCallbacks);
 }
 
 template <>
