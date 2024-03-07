@@ -75,9 +75,16 @@ void VulkanEngine::cleanup_misc() const
 
 void VulkanEngine::cleanup_core() const
 {
+    vmaDestroyAllocator(_allocator);
     vkDestroyDevice(_device, nullptr);
     vkDestroyInstance(_instance, nullptr);
     SDL_DestroyWindow(_window);
+}
+
+void VulkanEngine::cleanup_imgui() const
+{
+    vkDestroyDescriptorPool(_device, _imguiDescriptorPool, nullptr);
+    ImGui_ImplVulkan_Shutdown();
 }
 
 void VulkanEngine::cleanup()
@@ -88,17 +95,14 @@ void VulkanEngine::cleanup()
         _mainDeletionQueue.flush();
 
         metalRoughMaterial.cleanup_resources(_device);
-
         for (FrameData& frame : _frames)
             frame.cleanup(_device);
-
         destroy_swapchain();
-
+        cleanup_imgui();
         cleanup_misc();
-
         cleanup_core();
 
-        // clear engine pointer
+        // Clear engine pointer
         loadedEngine = nullptr;
     }
 }
@@ -394,8 +398,7 @@ void VulkanEngine::init_imgui()
     pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
     pool_info.pPoolSizes = pool_sizes;
 
-    VkDescriptorPool imguiPool;
-    VK_CHECK(vkCreateDescriptorPool(_device, &pool_info, nullptr, &imguiPool));
+    VK_CHECK(vkCreateDescriptorPool(_device, &pool_info, nullptr, &_imguiDescriptorPool));
 
     // Initialize imgui library
     ImGui::CreateContext();
@@ -406,7 +409,7 @@ void VulkanEngine::init_imgui()
     init_info.PhysicalDevice = _chosenGPU;
     init_info.Device = _device;
     init_info.Queue = _graphicsQueue;
-    init_info.DescriptorPool = imguiPool;
+    init_info.DescriptorPool = _imguiDescriptorPool;
     init_info.MinImageCount = 3;
     init_info.ImageCount = 3;
     init_info.UseDynamicRendering = true;
@@ -416,11 +419,6 @@ void VulkanEngine::init_imgui()
 
     immediate_submit([&](VkCommandBuffer cmd) { ImGui_ImplVulkan_CreateFontsTexture(cmd); });
     ImGui_ImplVulkan_DestroyFontUploadObjects();
-
-    _mainDeletionQueue.push_function([=]() { // Leave this on =, imguiPool c++ object gets destroyed after function ends, copy it instead
-        vkDestroyDescriptorPool(_device, imguiPool, nullptr);
-        ImGui_ImplVulkan_Shutdown();
-    });
 }
 
 void VulkanEngine::init_vulkan()
@@ -476,9 +474,6 @@ void VulkanEngine::init_vulkan()
     allocatorInfo.instance = _instance;
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaCreateAllocator(&allocatorInfo, &_allocator);
-    _mainDeletionQueue.push_function([&]() {
-        vmaDestroyAllocator(_allocator);
-    });
 }
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)

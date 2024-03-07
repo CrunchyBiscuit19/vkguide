@@ -133,6 +133,7 @@ public:
     VkFence _immFence;
     VkCommandBuffer _immCommandBuffer;
     VkCommandPool _immCommandPool;
+    VkDescriptorPool _imguiDescriptorPool;
 
     DeletionQueue _mainDeletionQueue;
 
@@ -141,6 +142,7 @@ public:
 
     void cleanup_misc() const;
     void cleanup_core() const;
+    void cleanup_imgui() const;
     void cleanup(); // shuts down the engine
 
     void draw(); // draw loop
