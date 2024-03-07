@@ -35,9 +35,9 @@ struct GLTFMetallic_Roughness {
     DescriptorWriter writer;
 
     struct MaterialDeletionQueue {
-        DeleteQueue<VkDescriptorSetLayout> descriptorSetLayoutDeletion;
-        DeleteQueue<VkPipelineLayout> pipelineLayoutDeletion;
-        DeleteQueue<VkPipeline> pipelineDeletion;
+        DeletionQueue<VkDescriptorSetLayout> descriptorSetLayoutDeletion;
+        DeletionQueue<VkPipelineLayout> pipelineLayoutDeletion;
+        DeletionQueue<VkPipeline> pipelineDeletion;
     } _materialDeletionQueue;
 
     void build_pipelines(VulkanEngine* engine);
@@ -95,8 +95,8 @@ public:
     int currentBackgroundEffect { 0 };
     struct PipelineDeletionQueue
     {
-        DeleteQueue<VkPipelineLayout> pipelineLayouts;
-        DeleteQueue<VkPipeline> pipelines;
+        DeletionQueue<VkPipelineLayout> pipelineLayouts;
+        DeletionQueue<VkPipeline> pipelines;
     } _pipelineDeletionQueue;
 
     VkSwapchainKHR _swapchain;
@@ -107,8 +107,8 @@ public:
     bool _resize_requested;
     struct SwapchainDeletionQueue
     {
-		DeleteQueue<VkSwapchainKHR> swapchains;
-        DeleteQueue<VkImageView> imageViews;
+		DeletionQueue<VkSwapchainKHR> swapchains;
+        DeletionQueue<VkImageView> imageViews;
     } _swapchainDeletionQueue;
 
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
@@ -118,7 +118,7 @@ public:
     VkDescriptorSetLayout _singleImageDescriptorLayout;
     struct DescriptorDeletionQueue
     {
-        DeleteQueue<VkDescriptorSetLayout> descriptorSetLayouts;
+        DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
     } _descriptorDeletionQueue;
 
     AllocatedImage _whiteImage;
@@ -131,14 +131,14 @@ public:
     float _renderScale = 1.f;
     struct ImageDeletionQueue
     {
-        DeleteQueue<VkImage> images;
-        DeleteQueue<VkImageView> imageViews;
+        DeletionQueue<VkImage> images;
+        DeletionQueue<VkImageView> imageViews;
     } _imageDeletionQueue;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
     struct SamplerDeletionQueue {
-        DeleteQueue<VkSampler> samplers;
+        DeletionQueue<VkSampler> samplers;
     } _samplerDeletionQueue;
 
     Camera mainCamera;
@@ -152,16 +152,14 @@ public:
     VkCommandPool _immCommandPool;
     VkDescriptorPool _imguiDescriptorPool;
     struct ImmediateDeletionQueue {
-        DeleteQueue<VkFence> fences;
-        DeleteQueue<VkCommandPool> commandPools;
+        DeletionQueue<VkFence> fences;
+        DeletionQueue<VkCommandPool> commandPools;
     } _immediateDeletionQueue;
 
     struct BufferDeletionQueue
     {
-        DeleteQueue<VkBuffer> buffers;
+        DeletionQueue<VkBuffer> buffers;
     } _genericBufferDeletionQueue;
-
-    DeletionQueue _mainDeletionQueue;
 
     static VulkanEngine& Get();
     void init(); // initializes everything in the engine

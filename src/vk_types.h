@@ -22,20 +22,6 @@
 
 #include <vk_descriptors.h>
 
-struct DeletionQueue {
-    std::deque<std::function<void()>> deletors;
-
-    void push_function(std::function<void()>&& function) { deletors.push_back(function); }
-    void flush()
-    {
-        // Reverse iterate the deletion queue to execute all the functions
-        for (auto& deletor : std::ranges::reverse_view(deletors)) {
-            deletor(); // call functors
-        }
-        deletors.clear();
-    }
-};
-
 template <class T0>
 struct VulkanResource {
     VkDevice device;
@@ -58,7 +44,7 @@ struct VulkanResource {
 };
 
 template <class T0>
-class DeleteQueue {
+class DeletionQueue {
     std::vector<VulkanResource<T0>> _resources;
 
 public:
@@ -161,9 +147,9 @@ struct FrameData {
     DescriptorAllocatorGrowable _frameDescriptors;
 
     struct FrameDeletionQueue {
-        DeleteQueue<VkFence> fenceDeletion;
-        DeleteQueue<VkSemaphore> semaphoreDeletion;
-        DeleteQueue<VkCommandPool> commandPoolDeletion;
+        DeletionQueue<VkFence> fenceDeletion;
+        DeletionQueue<VkSemaphore> semaphoreDeletion;
+        DeletionQueue<VkCommandPool> commandPoolDeletion;
     } _frameDeletionQueue;
 
     void cleanup(VkDevice device)

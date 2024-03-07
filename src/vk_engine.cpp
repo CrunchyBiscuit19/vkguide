@@ -131,8 +131,6 @@ void VulkanEngine::cleanup()
     if (_isInitialized) {
         vkDeviceWaitIdle(_device);
 
-        _mainDeletionQueue.flush();
-
         metalRoughMaterial.cleanup_resources(_device);
         for (FrameData& frame : _frames)
             frame.cleanup(_device);
