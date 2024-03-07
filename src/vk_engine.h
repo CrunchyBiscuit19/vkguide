@@ -113,6 +113,7 @@ public:
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
+    DeleteQueue<VkImage> imageDeletion;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;

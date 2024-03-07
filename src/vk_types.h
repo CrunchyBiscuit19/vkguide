@@ -41,31 +41,18 @@ struct VulkanResource {
     VkDevice device;
     T0 object;
     VkAllocationCallbacks* allocationCallbacks;
-
-    VulkanResource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback)
-        : device(device)
-        , object(object)
-        , allocationCallbacks(allocationCallback)
-    {
-    }
-    virtual void destroy()
-    {
-    }
-    // Still need one for image and buffer
-};
-
-template <class T0>
-struct VmaResource : VulkanResource<T0> {
     VmaAllocator allocator;
     VmaAllocation allocation;
 
-    VmaResource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback, VmaAllocator allocator, VmaAllocation allocation)
-        : VulkanResource<T0>(device, object, allocationCallback)
-        , allocator(allocator)
-        , allocation(allocation)
+    VulkanResource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback, VmaAllocator allocator = nullptr, VmaAllocation allocation = nullptr)
+        : device(device)
+        , object(object)
+        , allocationCallbacks(allocationCallback)
+		, allocator(allocator)
+		, allocation(allocation)
     {
     }
-    void destroy() override
+    virtual void destroy()
     {
     }
 };
@@ -79,7 +66,11 @@ public:
     {
         _resources.emplace_back(device, object, allocationCallback);
     }
-    virtual void flush()
+    void push_resource(VkDevice device, T0 object, VkAllocationCallbacks* allocationCallback, VmaAllocator allocator, VmaAllocation allocation)
+    {
+        _resources.emplace_back(device, object, allocationCallback, allocator, allocation);
+    }
+    void flush()
     {
         for (auto& resource : _resources)
             resource.destroy();
@@ -133,12 +124,12 @@ inline void VulkanResource<VkImageView>::destroy()
     vkDestroyImageView(device, object, allocationCallbacks);
 }
 template <>
-inline void VmaResource<VkImage>::destroy()
+inline void VulkanResource<VkImage>::destroy()
 {
     vmaDestroyImage(allocator, object, allocation);
 }
 template <>
-inline void VmaResource<VkBuffer>::destroy()
+inline void VulkanResource<VkBuffer>::destroy()
 {
     vmaDestroyBuffer(allocator, object, allocation);
 }
