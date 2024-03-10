@@ -183,7 +183,6 @@ public:
 
     GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
-private:
     std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
     GPUSceneData sceneData;
@@ -192,6 +191,7 @@ private:
 
     DrawContext mainDrawContext;
     std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
     void init_imgui();
 

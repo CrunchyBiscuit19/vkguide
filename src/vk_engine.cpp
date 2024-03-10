@@ -63,6 +63,11 @@ void VulkanEngine::init()
     init_default_data();
     mainCamera.init();
 
+    const std::string structurePath = {"../../assets/structure.glb"};
+    const auto structureFile = loadGltf(this, structurePath);
+    assert(structureFile.has_value());
+    loadedScenes["structure"] = *structureFile;
+
     // Everything went fine
     _isInitialized = true;
 }
@@ -131,6 +136,10 @@ void VulkanEngine::cleanup()
     if (_isInitialized) {
         vkDeviceWaitIdle(_device);
 
+        loadedScenes["structure"]->descriptorPool.destroy_pools(_device);
+        for (const auto& sampler : loadedScenes["structure"]->samplers)
+            vkDestroySampler(_device, sampler, nullptr);
+        loadedScenes.clear();
         metalRoughMaterial.cleanup_resources(_device);
         for (FrameData& frame : _frames)
             frame.cleanup(_device);
@@ -1006,7 +1015,7 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkIm
 AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
     const size_t data_size = size.depth * size.width * size.height * 4;
-    const AllocatedBuffer uploadbuffer = create_buffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU); // Stagiing buffer
+    const AllocatedBuffer uploadbuffer = create_buffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU); // Staging buffer
     memcpy(uploadbuffer.info.pMappedData, data, data_size);
 
     // Image to hold data loaded from file
@@ -1055,6 +1064,7 @@ void VulkanEngine::update_scene()
 {
     mainDrawContext.OpaqueSurfaces.clear();
 
+    loadedScenes["structure"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
     loadedNodes["Suzanne"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
     sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
     sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);

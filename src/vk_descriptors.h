@@ -12,7 +12,7 @@ struct DescriptorLayoutBuilder {
     VkDescriptorSetLayout build(VkDevice device, VkShaderStageFlags shaderStages);
 };
 
-struct DescriptorAllocator {
+/* struct DescriptorAllocator {
 
     struct PoolSizeRatio {
         VkDescriptorType type;
@@ -26,7 +26,7 @@ struct DescriptorAllocator {
     void destroy_pool(VkDevice device) const;
 
     VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
-};
+}; */
 
 struct DescriptorAllocatorGrowable {
 public:
