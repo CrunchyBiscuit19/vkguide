@@ -136,9 +136,7 @@ void VulkanEngine::cleanup()
     if (_isInitialized) {
         vkDeviceWaitIdle(_device);
 
-        loadedScenes["structure"]->descriptorPool.destroy_pools(_device);
-        for (const auto& sampler : loadedScenes["structure"]->samplers)
-            vkDestroySampler(_device, sampler, nullptr);
+		// GLTF scenes cleared by own destructor.
         loadedScenes.clear();
         metalRoughMaterial.cleanup_resources(_device);
         for (FrameData& frame : _frames)
@@ -1065,7 +1063,6 @@ void VulkanEngine::update_scene()
     mainDrawContext.OpaqueSurfaces.clear();
 
     loadedScenes["structure"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
-    loadedNodes["Suzanne"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
     sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
     sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
     sceneData.proj[1][1] *= -1;
@@ -1074,12 +1071,6 @@ void VulkanEngine::update_scene()
     sceneData.ambientColor = glm::vec4(.1f);
     sceneData.sunlightColor = glm::vec4(1.f);
     sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
-
-    for (int x = -3; x < 3; x++) {
-        glm::mat4 scale = glm::scale(glm::mat4 { 1.f }, glm::vec3 { 0.2 });
-        glm::mat4 translation = glm::translate(glm::mat4 { 1.f }, glm::vec3 { x, 1, 0 });
-        loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
-    }
 
     mainCamera.update();
     const glm::mat4 view = mainCamera.getViewMatrix();
