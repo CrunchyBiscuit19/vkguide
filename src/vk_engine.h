@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include <camera.h>
 #include <vk_descriptors.h>
 #include <vk_loader.h>
 #include <vk_types.h>
-#include <camera.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -65,6 +65,7 @@ struct RenderObject {
 
 struct DrawContext {
     std::vector<RenderObject> OpaqueSurfaces;
+    std::vector<RenderObject> TransparentSurfaces;
 };
 
 class VulkanEngine {
@@ -93,8 +94,7 @@ public:
     VkPipeline _meshPipeline;
     std::vector<ComputeEffect> backgroundEffects;
     int currentBackgroundEffect { 0 };
-    struct PipelineDeletionQueue
-    {
+    struct PipelineDeletionQueue {
         DeletionQueue<VkPipelineLayout> pipelineLayouts;
         DeletionQueue<VkPipeline> pipelines;
     } _pipelineDeletionQueue;
@@ -105,9 +105,8 @@ public:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
-    struct SwapchainDeletionQueue
-    {
-		DeletionQueue<VkSwapchainKHR> swapchains;
+    struct SwapchainDeletionQueue {
+        DeletionQueue<VkSwapchainKHR> swapchains;
         DeletionQueue<VkImageView> imageViews;
     } _swapchainDeletionQueue;
 
@@ -116,8 +115,7 @@ public:
     VkDescriptorSetLayout _drawImageDescriptorLayout;
     VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
     VkDescriptorSetLayout _singleImageDescriptorLayout;
-    struct DescriptorDeletionQueue
-    {
+    struct DescriptorDeletionQueue {
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
     } _descriptorDeletionQueue;
 
@@ -129,8 +127,7 @@ public:
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     float _renderScale = 1.f;
-    struct ImageDeletionQueue
-    {
+    struct ImageDeletionQueue {
         DeletionQueue<VkImage> images;
         DeletionQueue<VkImageView> imageViews;
     } _imageDeletionQueue;
@@ -156,8 +153,7 @@ public:
         DeletionQueue<VkCommandPool> commandPools;
     } _immediateDeletionQueue;
 
-    struct BufferDeletionQueue
-    {
+    struct BufferDeletionQueue {
         DeletionQueue<VkBuffer> buffers;
     } _genericBufferDeletionQueue;
 

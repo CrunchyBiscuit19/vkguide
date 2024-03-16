@@ -64,7 +64,7 @@ void VulkanEngine::init()
     mainCamera.init();
 
     const std::string structurePath = {"../../assets/structure.glb"};
-    const auto structureFile = loadGltf(this, structurePath);
+    const auto structureFile = load_gltf(this, structurePath);
     assert(structureFile.has_value());
     loadedScenes["structure"] = *structureFile;
 
@@ -194,17 +194,16 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     // Scene data binding
     auto* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
-    *sceneUniformData = sceneData;
-    VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
+	*sceneUniformData = sceneData;
+    const VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
     DescriptorWriter writer;
     writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.update_set(_device, globalDescriptor);
 
-    for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces) {
+    auto draw = [&](const RenderObject& r) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
 
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
-
-        // Set dynamic viewport
+         // Set dynamic viewport
         VkViewport viewport = {};
         viewport.x = 0;
         viewport.y = 0;
@@ -221,17 +220,27 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         scissor.extent.height = _drawExtent.height;
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1, &r.material->materialSet, 0, nullptr);
 
         GPUDrawPushConstants pushConstants;
-        pushConstants.vertexBuffer = draw.vertexBufferAddress;
-        pushConstants.worldMatrix = draw.transform;
-        vkCmdPushConstants(cmd, draw.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+        pushConstants.vertexBuffer = r.vertexBufferAddress;
+        pushConstants.worldMatrix = r.transform;
+        vkCmdPushConstants(cmd, r.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-        vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
+        vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
+    };
+
+    for (const RenderObject& r : mainDrawContext.OpaqueSurfaces) {
+        draw(r);
     }
+	for (const RenderObject& r : mainDrawContext.TransparentSurfaces)
+	{
+	    draw(r);
+	}
+    mainDrawContext.OpaqueSurfaces.clear();
+    mainDrawContext.TransparentSurfaces.clear();
 
     vkCmdEndRendering(cmd);
 }
@@ -397,6 +406,7 @@ void VulkanEngine::run()
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
+            ImGui::Text("Opaque Draws: %llu, Transparrent Draws: %llu", mainDrawContext.OpaqueSurfaces.size(), mainDrawContext.TransparentSurfaces.size());
             ImGui::End();
         }
         ImGui::Render();
@@ -850,8 +860,6 @@ void VulkanEngine::init_mesh_pipeline()
 
 void VulkanEngine::init_default_data()
 {
-    testMeshes = loadGltfMeshes(this, "../../assets/basicmesh.glb").value();
-
     // Ccolour data interpreted as little endian
     constexpr uint32_t white = std::byteswap(0xFFFFFFFF);
     _whiteImage = create_image(&white, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,

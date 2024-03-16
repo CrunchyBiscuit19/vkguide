@@ -9,6 +9,7 @@ layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec3 outColor;
 layout (location = 2) out vec2 outUV;
 
+//buffer device address
 struct Vertex {
 
 	vec3 position;
@@ -17,7 +18,6 @@ struct Vertex {
 	float uv_y;
 	vec4 color;
 }; 
-
 layout(buffer_reference, std430) readonly buffer VertexBuffer{ 
 	Vertex vertices[];
 };
