@@ -187,6 +187,13 @@ struct ComputePushConstants {
     glm::vec4 data4;
 };
 
+struct ComputeEffect {
+    const char* name;
+    VkPipeline pipeline;
+    VkPipelineLayout layout;
+    ComputePushConstants data;
+};
+
 struct GPUSceneData {
     glm::mat4 view;
     glm::mat4 proj;
@@ -217,23 +224,23 @@ struct GLTFMaterial {
     MaterialInstance data;
 };
 
+struct Bounds {
+    glm::vec3 origin;
+    float sphereRadius;
+    glm::vec3 extents;
+};
+
 struct GeoSurface {
     uint32_t startIndex;
     uint32_t count;
     std::shared_ptr<GLTFMaterial> material;
+    Bounds bounds;
 };
 
 struct MeshAsset {
     std::string name;
     std::vector<GeoSurface> surfaces; // Mesh primitives, one material per primitve
     GPUMeshBuffers meshBuffers;
-};
-
-struct ComputeEffect {
-    const char* name;
-    VkPipeline pipeline;
-    VkPipelineLayout layout;
-    ComputePushConstants data;
 };
 
 struct DrawContext;

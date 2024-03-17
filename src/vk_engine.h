@@ -57,6 +57,8 @@ struct RenderObject {
     uint32_t firstIndex;
     VkBuffer indexBuffer;
 
+    Bounds bounds;
+
     MaterialInstance* material;
 
     glm::mat4 transform;
@@ -66,6 +68,14 @@ struct RenderObject {
 struct DrawContext {
     std::vector<RenderObject> OpaqueSurfaces;
     std::vector<RenderObject> TransparentSurfaces;
+};
+
+struct EngineStats {
+    float frametime;
+    int triangle_count;
+    int drawcall_count;
+    float scene_update_time;
+    float mesh_draw_time;
 };
 
 class VulkanEngine {
@@ -87,6 +97,8 @@ public:
     uint32_t _graphicsQueueFamily;
 
     VmaAllocator _allocator;
+
+    EngineStats stats;
 
     VkPipeline _gradientPipeline;
     VkPipelineLayout _gradientPipelineLayout;
@@ -186,7 +198,6 @@ public:
     GLTFMetallic_Roughness metalRoughMaterial;
 
     DrawContext mainDrawContext;
-    std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
     void init_imgui();

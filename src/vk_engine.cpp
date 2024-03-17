@@ -27,6 +27,8 @@ constexpr bool bUseValidationLayers = false;
 constexpr bool bUseValidationLayers = true;
 #endif
 
+bool is_visible(const RenderObject& obj, const glm::mat4& viewproj);
+
 VulkanEngine* loadedEngine = nullptr;
 
 VulkanEngine& VulkanEngine::Get()
@@ -63,7 +65,7 @@ void VulkanEngine::init()
     init_default_data();
     mainCamera.init();
 
-    const std::string structurePath = {"../../assets/structure.glb"};
+    const std::string structurePath = { "../../assets/structure.glb" };
     const auto structureFile = load_gltf(this, structurePath);
     assert(structureFile.has_value());
     loadedScenes["structure"] = *structureFile;
@@ -136,7 +138,7 @@ void VulkanEngine::cleanup()
     if (_isInitialized) {
         vkDeviceWaitIdle(_device);
 
-		// GLTF scenes cleared by own destructor.
+        // GLTF scenes cleared by own destructor.
         loadedScenes.clear();
         metalRoughMaterial.cleanup_resources(_device);
         for (FrameData& frame : _frames)
@@ -182,6 +184,26 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) 
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
+    // Don't sorting the draw array as the objects are big.
+    // Instead, sort an array of indices to the draw array.
+    std::vector<uint32_t> opaque_draws;
+    opaque_draws.reserve(mainDrawContext.OpaqueSurfaces.size());
+    for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++)
+        if (is_visible(mainDrawContext.OpaqueSurfaces[i], sceneData.viewproj))
+            opaque_draws.push_back(i);
+    std::ranges::sort(opaque_draws, [&](const auto& iA, const auto& iB) {
+        const RenderObject& A = mainDrawContext.OpaqueSurfaces[iA];
+        const RenderObject& B = mainDrawContext.OpaqueSurfaces[iB];
+        // By material, then by indexbuffer.
+        if (A.material == B.material)
+            return A.indexBuffer < B.indexBuffer;
+        return A.material < B.material;
+    });
+
+    stats.drawcall_count = 0;
+    stats.triangle_count = 0;
+    auto start = std::chrono::system_clock::now();
+
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
     const VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
@@ -194,55 +216,77 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     // Scene data binding
     auto* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
-	*sceneUniformData = sceneData;
+    *sceneUniformData = sceneData;
     const VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
     DescriptorWriter writer;
     writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.update_set(_device, globalDescriptor);
 
+    // State tracking of material and pipeline
+    MaterialPipeline* lastPipeline = nullptr;
+    MaterialInstance* lastMaterial = nullptr;
+    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+
     auto draw = [&](const RenderObject& r) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
+        if (r.material != lastMaterial) {
+            lastMaterial = r.material;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1, &r.material->materialSet, 0, nullptr);
+        }
 
-         // Set dynamic viewport
-        VkViewport viewport = {};
-        viewport.x = 0;
-        viewport.y = 0;
-        viewport.width = static_cast<float>(_drawExtent.width);
-        viewport.height = static_cast<float>(_drawExtent.height);
-        viewport.minDepth = 0.f;
-        viewport.maxDepth = 1.f;
-        vkCmdSetViewport(cmd, 0, 1, &viewport);
-        // Set dynamic scissor
-        VkRect2D scissor = {};
-        scissor.offset.x = 0;
-        scissor.offset.y = 0;
-        scissor.extent.width = _drawExtent.width;
-        scissor.extent.height = _drawExtent.height;
-        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        if (r.material->pipeline != lastPipeline) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
+            lastPipeline = r.material->pipeline;
 
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1, &r.material->materialSet, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+
+            // Set dynamic viewport
+            VkViewport viewport = {};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = static_cast<float>(_drawExtent.width);
+            viewport.height = static_cast<float>(_drawExtent.height);
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
+            vkCmdSetViewport(cmd, 0, 1, &viewport);
+            // Set dynamic scissor
+            VkRect2D scissor = {};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent.width = _drawExtent.width;
+            scissor.extent.height = _drawExtent.height;
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+        }
+
+        if (r.indexBuffer != lastIndexBuffer) {
+            lastIndexBuffer = r.indexBuffer;
+            vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        }
 
         GPUDrawPushConstants pushConstants;
         pushConstants.vertexBuffer = r.vertexBufferAddress;
         pushConstants.worldMatrix = r.transform;
         vkCmdPushConstants(cmd, r.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-        vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
+
+        stats.drawcall_count++;
+        stats.triangle_count += r.indexCount / 3;
     };
 
-    for (const RenderObject& r : mainDrawContext.OpaqueSurfaces) {
+    for (auto& drawIndex : opaque_draws) {
+        draw(mainDrawContext.OpaqueSurfaces[drawIndex]);
+    }
+    for (const RenderObject& r : mainDrawContext.TransparentSurfaces) {
         draw(r);
     }
-	for (const RenderObject& r : mainDrawContext.TransparentSurfaces)
-	{
-	    draw(r);
-	}
     mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
 
     vkCmdEndRendering(cmd);
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    stats.mesh_draw_time = static_cast<float>(elapsed.count()) / 1000.f;
 }
 
 void VulkanEngine::draw()
@@ -372,6 +416,8 @@ void VulkanEngine::run()
     bool bQuit = false;
 
     while (!bQuit) {
+        auto start = std::chrono::system_clock::now();
+
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT)
                 bQuit = true;
@@ -401,17 +447,27 @@ void VulkanEngine::run()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame(_window);
         ImGui::NewFrame();
-        if (ImGui::Begin("background")) {
-            const ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
+        if (ImGui::Begin("Background")) {
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
-            ImGui::Text("Opaque Draws: %llu, Transparrent Draws: %llu", mainDrawContext.OpaqueSurfaces.size(), mainDrawContext.TransparentSurfaces.size());
+            ImGui::End();
+        }
+        if (ImGui::Begin("Stats")) {
+            ImGui::Text("frametime %f ms", stats.frametime);
+            ImGui::Text("draw time %f ms", stats.mesh_draw_time);
+            ImGui::Text("update time %f ms", stats.scene_update_time);
+            ImGui::Text("triangles %i", stats.triangle_count);
+            ImGui::Text("draws %i", stats.drawcall_count);
             ImGui::End();
         }
         ImGui::Render();
 
         draw();
+
+        auto end = std::chrono::system_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        stats.frametime = static_cast<float>(elapsed.count()) / 1000.f;
     }
 }
 
@@ -840,7 +896,7 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.set_multisampling_none();
     // pipelineBuilder.enable_blending_additive();
     pipelineBuilder.enable_blending_alphablend();
@@ -908,16 +964,6 @@ void VulkanEngine::init_default_data()
     materialResources.dataBufferOffset = 0;
 
     defaultData = metalRoughMaterial.write_material(_device, MaterialPass::MainColor, materialResources, _globalDescriptorAllocator);
-
-    for (const auto& m : testMeshes) {
-        std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-        newNode->mesh = m;
-        newNode->localTransform = glm::mat4 { 1.f };
-        newNode->worldTransform = glm::mat4 { 1.f };
-        for (auto& s : newNode->mesh->surfaces)
-            s.material = std::make_shared<GLTFMaterial>(defaultData);
-        loadedNodes[m->name] = std::move(newNode);
-    }
 
     _samplerDeletionQueue.samplers.push_resource(_device, _defaultSamplerLinear, nullptr);
     _samplerDeletionQueue.samplers.push_resource(_device, _defaultSamplerNearest, nullptr);
@@ -1068,7 +1114,10 @@ void VulkanEngine::destroy_image(const AllocatedImage& img)
 
 void VulkanEngine::update_scene()
 {
+    const auto start = std::chrono::system_clock::now();
+
     mainDrawContext.OpaqueSurfaces.clear();
+    mainDrawContext.TransparentSurfaces.clear();
 
     loadedScenes["structure"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
     sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
@@ -1087,6 +1136,10 @@ void VulkanEngine::update_scene()
     sceneData.view = view;
     sceneData.proj = projection;
     sceneData.viewproj = projection * view;
+
+    const auto end = std::chrono::system_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    stats.scene_update_time = static_cast<float>(elapsed.count()) / 1000.f;
 }
 
 void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
@@ -1193,13 +1246,53 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
         def.indexCount = s.count;
         def.firstIndex = s.startIndex;
         def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
+        def.bounds = s.bounds;
         def.material = &s.material->data;
         def.transform = nodeMatrix;
         def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
 
-        ctx.OpaqueSurfaces.push_back(def);
+        if (s.material->data.passType == MaterialPass::Transparent)
+            ctx.TransparentSurfaces.push_back(def);
+        else
+            ctx.OpaqueSurfaces.push_back(def);
     }
 
     // Call the Node version of the function to continue recursive drawing
     Node::Draw(topMatrix, ctx);
+}
+
+bool is_visible(const RenderObject& obj, const glm::mat4& viewproj)
+{
+    // Bounding box corners.
+	constexpr std::array corners {
+        glm::vec3 { 1, 1, 1 },
+        glm::vec3 { 1, 1, -1 },
+        glm::vec3 { 1, -1, 1 },
+        glm::vec3 { 1, -1, -1 },
+        glm::vec3 { -1, 1, 1 },
+        glm::vec3 { -1, 1, -1 },
+        glm::vec3 { -1, -1, 1 },
+        glm::vec3 { -1, -1, -1 },
+    };
+    const glm::mat4 pvmMatrix = viewproj * obj.transform;
+    glm::vec3 min = { 1.5, 1.5, 1.5 };
+    glm::vec3 max = { -1.5, -1.5, -1.5 };
+
+    for (int c = 0; c < 8; c++) {
+        // Project the bounding box into clip space.
+        glm::vec4 v = pvmMatrix * glm::vec4(obj.bounds.origin + (corners[c] * obj.bounds.extents), 1.f);
+        // Perspective correction.
+        v.x = v.x / v.w;
+        v.y = v.y / v.w;
+        v.z = v.z / v.w;
+        // Minimum and maximum projected vertices of the bounding box.
+        min = glm::min(glm::vec3 { v.x, v.y, v.z }, min);
+        max = glm::max(glm::vec3 { v.x, v.y, v.z }, max);
+    }
+
+    // Check the clip-spaces bounding box is within the view.
+    // Z from 0 to 1 presumably because that's what's defined in depth buffer?
+    if (min.z > 1.f || max.z < 0.f || min.x > 1.f || max.x < -1.f || min.y > 1.f || max.y < -1.f)
+        return false;
+    return true;
 }
