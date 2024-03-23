@@ -17,9 +17,12 @@ add_executable (engine
   vk_loader.cpp
   camera.cpp
   camera.h
+  cvars.h
+  cvars.cpp
+  string_utils.h
 )
 
-set_property(TARGET engine PROPERTY CXX_STANDARD 20)
+set_property(TARGET engine PROPERTY CXX_STANDARD 23)
 target_compile_definitions(engine PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
 target_include_directories(engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 

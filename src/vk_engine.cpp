@@ -9,13 +9,13 @@
 #include <SDL_vulkan.h>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 #include <magic_enum.hpp>
 #include <vk_mem_alloc.h>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 #include <bit>
 #include <chrono>
@@ -408,6 +408,8 @@ void VulkanEngine::draw()
 
     // Increase the number of frames drawn
     _frameNumber++;
+
+    cvarInstance->intCVars.get("fif")->value = _frameNumber % 3;
 }
 
 void VulkanEngine::run()
@@ -451,6 +453,8 @@ void VulkanEngine::run()
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
+            cvarInstance->intCVars.create(std::make_shared<CVarStorage<int>>(_frameNumber, CVarType::INT, CVarFlags::None, "fif", "nil"));
+            ImGui::Text("frame-in-flight: %d", cvarInstance->intCVars.get("fif")->value);
             ImGui::End();
         }
         if (ImGui::Begin("Stats")) {
@@ -463,7 +467,7 @@ void VulkanEngine::run()
         }
         ImGui::Render();
 
-        draw();
+    	draw();
 
         auto end = std::chrono::system_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -1066,9 +1070,9 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkIm
 
 AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
-    const size_t data_size = size.depth * size.width * size.height * 4;
-    const AllocatedBuffer uploadbuffer = create_buffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU); // Staging buffer
-    memcpy(uploadbuffer.info.pMappedData, data, data_size);
+    const size_t dataSize = size.depth * size.width * size.height * 4;
+    const AllocatedBuffer uploadBuffer = create_buffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU); // Staging buffer
+    memcpy(uploadBuffer.info.pMappedData, data, dataSize);
 
     // Image to hold data loaded from file
     const AllocatedImage newImage = create_image(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
@@ -1092,15 +1096,18 @@ AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkF
         copyRegion.imageSubresource.layerCount = 1;
         copyRegion.imageExtent = size;
 
-        vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        vkCmdCopyBufferToImage(cmd, uploadBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
             &copyRegion);
 
-        vkutil::transition_image(cmd, newImage.image,
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
-            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    	if (mipmapped)
+            vkutil::generate_mipmaps(cmd, newImage.image, VkExtent2D { newImage.imageExtent.width, newImage.imageExtent.height });
+        else
+            vkutil::transition_image(cmd, newImage.image,
+                VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
+                VK_ACCESS_2_MEMORY_READ_BIT,
+                VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
+                VK_ACCESS_2_MEMORY_READ_BIT, 
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     });
 
     return newImage;

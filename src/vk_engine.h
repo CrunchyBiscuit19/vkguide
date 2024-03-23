@@ -7,6 +7,7 @@
 #include <vk_descriptors.h>
 #include <vk_loader.h>
 #include <vk_types.h>
+#include <cvars.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -99,6 +100,7 @@ public:
     VmaAllocator _allocator;
 
     EngineStats stats;
+    CVarSystem* cvarInstance { CVarSystem::Get() };
 
     VkPipeline _gradientPipeline;
     VkPipelineLayout _gradientPipelineLayout;
