@@ -104,7 +104,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             file.images[image.name.c_str()] = *img;
         } else {
             // Failed to load -> default checkerboard texture
-            images.push_back(engine->_errorCheckerboardImage);
+            images.push_back(engine->_stockImages["errorCheckerboard"]);
             std::cout << "gltf failed to load texture " << image.name << std::endl;
         }
     }
@@ -136,9 +136,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
         // Default the material textures
         GLTFMetallic_Roughness::MaterialResources materialResources;
-        materialResources.colorImage = engine->_whiteImage;
+        materialResources.colorImage = engine->_stockImages["white"];
         materialResources.colorSampler = engine->_defaultSamplerLinear;
-        materialResources.metalRoughImage = engine->_whiteImage;
+        materialResources.metalRoughImage = engine->_stockImages["white"];
         materialResources.metalRoughSampler = engine->_defaultSamplerLinear;
 
         // Set the uniform buffer for the material data

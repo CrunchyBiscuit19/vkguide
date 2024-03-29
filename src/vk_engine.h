@@ -133,10 +133,7 @@ public:
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
     } _descriptorDeletionQueue;
 
-    AllocatedImage _whiteImage;
-    AllocatedImage _blackImage;
-    AllocatedImage _greyImage;
-    AllocatedImage _errorCheckerboardImage;
+    std::unordered_map<std::string, AllocatedImage> _stockImages;
     AllocatedImage _drawImage; // Drawn images before copying to swapchain
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;

@@ -9,13 +9,13 @@
 #include <SDL_vulkan.h>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 #include <magic_enum.hpp>
 #include <vk_mem_alloc.h>
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
 
 #include <bit>
 #include <chrono>
@@ -409,6 +409,7 @@ void VulkanEngine::draw()
     // Increase the number of frames drawn
     _frameNumber++;
 
+    cvarInstance->intCVars.create(std::make_shared<CVarStorage<int>>(_frameNumber, CVarType::INT, CVarFlags::None, "fif", "nil"));
     cvarInstance->intCVars.get("fif")->value = _frameNumber % 3;
 }
 
@@ -453,8 +454,9 @@ void VulkanEngine::run()
             ImGui::SliderFloat("Render Scale", &_renderScale, 0.3f, 1.f);
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
-            cvarInstance->intCVars.create(std::make_shared<CVarStorage<int>>(_frameNumber, CVarType::INT, CVarFlags::None, "fif", "nil"));
-            ImGui::Text("frame-in-flight: %d", cvarInstance->intCVars.get("fif")->value);
+            if (cvarInstance->intCVars.get("fif")) {
+                ImGui::Text("frame-in-flight: %d", cvarInstance->intCVars.get("fif")->value);
+            }
             ImGui::End();
         }
         if (ImGui::Begin("Stats")) {
@@ -467,7 +469,7 @@ void VulkanEngine::run()
         }
         ImGui::Render();
 
-    	draw();
+        draw();
 
         auto end = std::chrono::system_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -922,13 +924,13 @@ void VulkanEngine::init_default_data()
 {
     // Ccolour data interpreted as little endian
     constexpr uint32_t white = std::byteswap(0xFFFFFFFF);
-    _whiteImage = create_image(&white, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    _stockImages["white"] = create_image(&white, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
     constexpr uint32_t grey = std::byteswap(0xAAAAAAFF);
-    _greyImage = create_image(&grey, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    _stockImages["grey"] = create_image(&grey, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
     constexpr uint32_t black = std::byteswap(0x000000FF);
-    _blackImage = create_image(&black, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    _stockImages["black"] = create_image(&black, VkExtent3D { 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
 
     // 16x16 checkerboard texture
@@ -940,7 +942,7 @@ void VulkanEngine::init_default_data()
             pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
         }
     }
-    _errorCheckerboardImage = create_image(pixels.data(), VkExtent3D { 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    _stockImages["errorCheckerboard"] = create_image(pixels.data(), VkExtent3D { 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_SAMPLED_BIT);
 
     VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
@@ -960,9 +962,9 @@ void VulkanEngine::init_default_data()
 
     // Default the material textures with white image texture
     GLTFMetallic_Roughness::MaterialResources materialResources;
-    materialResources.colorImage = _whiteImage;
+    materialResources.colorImage = _stockImages["white"];
     materialResources.colorSampler = _defaultSamplerLinear;
-    materialResources.metalRoughImage = _whiteImage;
+    materialResources.metalRoughImage = _stockImages["white"];
     materialResources.metalRoughSampler = _defaultSamplerLinear;
     materialResources.dataBuffer = materialConstants.buffer;
     materialResources.dataBufferOffset = 0;
@@ -1099,14 +1101,14 @@ AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkF
         vkCmdCopyBufferToImage(cmd, uploadBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
             &copyRegion);
 
-    	if (mipmapped)
+        if (mipmapped)
             vkutil::generate_mipmaps(cmd, newImage.image, VkExtent2D { newImage.imageExtent.width, newImage.imageExtent.height });
         else
             vkutil::transition_image(cmd, newImage.image,
                 VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
                 VK_ACCESS_2_MEMORY_READ_BIT,
                 VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
-                VK_ACCESS_2_MEMORY_READ_BIT, 
+                VK_ACCESS_2_MEMORY_READ_BIT,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     });
 
@@ -1271,7 +1273,7 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 bool is_visible(const RenderObject& obj, const glm::mat4& viewproj)
 {
     // Bounding box corners.
-	constexpr std::array corners {
+    constexpr std::array corners {
         glm::vec3 { 1, 1, 1 },
         glm::vec3 { 1, 1, -1 },
         glm::vec3 { 1, -1, 1 },
