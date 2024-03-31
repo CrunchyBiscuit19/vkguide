@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <vk_types.h>
+#include <vk_meshes.h>
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/parser.hpp>

@@ -180,20 +180,6 @@ struct GPUDrawPushConstants {
     VkDeviceAddress vertexBuffer;
 };
 
-struct ComputePushConstants {
-    glm::vec4 data1;
-    glm::vec4 data2;
-    glm::vec4 data3;
-    glm::vec4 data4;
-};
-
-struct ComputeEffect {
-    const char* name;
-    VkPipeline pipeline;
-    VkPipelineLayout layout;
-    ComputePushConstants data;
-};
-
 struct GPUSceneData {
     glm::mat4 view;
     glm::mat4 proj;
@@ -201,76 +187,6 @@ struct GPUSceneData {
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
-};
-
-struct MaterialPipeline {
-    VkPipeline pipeline;
-    VkPipelineLayout layout;
-};
-
-enum class MaterialPass : uint8_t {
-    MainColor,
-    Transparent,
-    Other
-};
-
-struct MaterialInstance {
-    MaterialPipeline* pipeline;
-    VkDescriptorSet materialSet;
-    MaterialPass passType;
-};
-
-struct GLTFMaterial {
-    MaterialInstance data;
-};
-
-struct Bounds {
-    glm::vec3 origin;
-    float sphereRadius;
-    glm::vec3 extents;
-};
-
-struct GeoSurface {
-    uint32_t startIndex;
-    uint32_t count;
-    std::shared_ptr<GLTFMaterial> material;
-    Bounds bounds;
-};
-
-struct MeshAsset {
-    std::string name;
-    std::vector<GeoSurface> surfaces; // Mesh primitives, one material per primitve
-    GPUMeshBuffers meshBuffers;
-};
-
-struct DrawContext;
-
-// Base class for a renderable dynamic object
-class IRenderable {
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
-};
-
-// Implementation of a drawable scene node.
-// The scene node can hold children and will also keep a transform to propagate to them (ie all children nodes also get transformed).
-struct Node : public IRenderable {
-    // Parent pointer must be a weak pointer to avoid circular dependencies
-    std::weak_ptr<Node> parent;
-    std::vector<std::shared_ptr<Node>> children;
-
-    glm::mat4 localTransform;
-    glm::mat4 worldTransform; // proj * view * localTransform
-
-    void refreshTransform(const glm::mat4& parentMatrix)
-    {
-        worldTransform = parentMatrix * localTransform;
-        for (const auto& c : children)
-            c->refreshTransform(worldTransform);
-    }
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx)
-    {
-        for (const auto& c : children)
-            c->Draw(topMatrix, ctx);
-    }
 };
 
 #define VK_CHECK(x)                                                          \
