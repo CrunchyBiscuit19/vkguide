@@ -64,7 +64,7 @@ void VulkanEngine::init()
     init_default_data();
     mainCamera.init();
 
-    const std::string structurePath = { "../../assets/structure.glb" };
+    const std::string structurePath = "../../assets/AntiqueCamera.glb";
     const auto structureFile = load_gltf(this, structurePath);
     assert(structureFile.has_value());
     loadedScenes["structure"] = *structureFile;
@@ -754,7 +754,14 @@ void VulkanEngine::update_scene()
     mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
 
-    loadedScenes["structure"]->Draw(glm::mat4 { 1.f }, mainDrawContext);
+    for (int i = 0; i < pow(100,2); i++)
+    {
+        const int column = i / 100;
+        const int row = i % 100;
+        glm::mat4 scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 0.2f });
+        glm::mat4 translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { column, 0, row });
+		loadedScenes["structure"]->Draw(translation * scale, mainDrawContext);
+    }
     sceneData.view = glm::translate(glm::mat4 { 1.f }, glm::vec3 { 0, 0, -5 });
     sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
     sceneData.proj[1][1] *= -1;
