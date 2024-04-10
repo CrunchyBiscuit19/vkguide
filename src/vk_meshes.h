@@ -20,7 +20,7 @@ struct GeoSurface {
 
 // Base class for a renderable dynamic object
 class IRenderable {
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
+    virtual void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
 };
 
 // Implementation of a drawable scene node.
@@ -39,10 +39,10 @@ struct Node : public IRenderable {
         for (const auto& c : children)
             c->refreshTransform(worldTransform);
     }
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx)
+    virtual void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
     {
         for (const auto& c : children)
-            c->Draw(topMatrix, ctx);
+            c->ToRenderObject(topMatrix, ctx);
     }
 };
 
@@ -55,5 +55,5 @@ struct MeshAsset {
 struct MeshNode : public Node {
     std::shared_ptr<MeshAsset> mesh;
 
-    void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+    void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };

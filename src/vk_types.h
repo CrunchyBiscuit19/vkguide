@@ -16,11 +16,15 @@
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <glm/fwd.hpp>
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
 
 #include <vk_descriptors.h>
+
+struct MaterialInstance;
+struct MeshAsset;
 
 template <class T0>
 struct VulkanResource {
@@ -171,13 +175,15 @@ struct Vertex {
 
 struct GPUMeshBuffers {
     AllocatedBuffer indexBuffer;
+    int indexCount;
     AllocatedBuffer vertexBuffer;
+    int vertexCount;
     VkDeviceAddress vertexBufferAddress;
 };
 
 struct GPUDrawPushConstants {
-    glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
+    VkDeviceAddress instanceBuffer;
 };
 
 struct GPUSceneData {
@@ -187,6 +193,19 @@ struct GPUSceneData {
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
+};
+
+struct InstanceData {
+    glm::mat4 translation;
+    glm::mat4 rotation;
+    glm::mat4 scale;
+    uint32_t texIndex;
+};
+
+struct IndirectBatch {
+    MeshAsset* mesh;
+    MaterialInstance* material;
+    VkDrawIndexedIndirectCommand indirectCommand;
 };
 
 #define VK_CHECK(x)                                                          \

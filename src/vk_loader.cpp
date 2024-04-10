@@ -383,11 +383,11 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
     return newImage;
 }
 
-void LoadedGLTF::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
+void LoadedGLTF::ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->Draw(topMatrix, ctx);
+        n->ToRenderObject(topMatrix, ctx);
     }
 }
 
@@ -398,18 +398,4 @@ void LoadedGLTF::clearAll()
     descriptorPool.destroy_pools(device);
     for (const auto& sampler : samplers)
         vkDestroySampler(device, sampler, nullptr);
-
-    // Added to deletion queue in the create_<object> functions
-    /*creator->destroy_buffer(materialDataBuffer);
-    for (const auto& v : meshes | std::views::values) {
-
-        creator->destroy_buffer(v->meshBuffers.indexBuffer);
-        creator->destroy_buffer(v->meshBuffers.vertexBuffer);
-    }
-    for (const auto& v : images | std::views::values) {
-
-        if (v.image == creator->_errorCheckerboardImage.image)
-            continue;
-        creator->destroy_image(v);
-    }*/
 }

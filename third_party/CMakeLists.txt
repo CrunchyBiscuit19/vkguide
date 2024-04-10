@@ -3,7 +3,7 @@
 add_library(vkbootstrap STATIC)
 add_library(glm INTERFACE)
 add_library(vma INTERFACE)
-
+add_library(magic_enum INTERFACE)
 add_library(stb_image INTERFACE)
 
 add_subdirectory(fastgltf)
@@ -22,6 +22,8 @@ target_link_libraries(vkbootstrap PUBLIC Vulkan::Vulkan $<$<BOOL:UNIX>:${CMAKE_D
 target_include_directories(vma INTERFACE vma)
 
 target_include_directories(glm INTERFACE glm)
+
+target_include_directories(magic_enum INTERFACE magic_enum)
 
 #add_library(sdl2 INTERFACE)
 

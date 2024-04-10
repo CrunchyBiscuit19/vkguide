@@ -30,7 +30,7 @@ struct LoadedGLTF : IRenderable {
 
     ~LoadedGLTF() { clearAll(); }
 
-    void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+    void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) override;
 
 private:
     void clearAll();

@@ -9,9 +9,8 @@ layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec3 outColor;
 layout (location = 2) out vec2 outUV;
 
-//buffer device address
+// Buffer device addresses
 struct Vertex {
-
 	vec3 position;
 	float uv_x;
 	vec3 normal;
@@ -21,23 +20,32 @@ struct Vertex {
 layout(buffer_reference, std430) readonly buffer VertexBuffer{ 
 	Vertex vertices[];
 };
+struct Instance {
+	mat4 translation;
+    mat4 rotation;
+    mat4 scale;
+    int texIndex;
+};
+layout(buffer_reference, std430) readonly buffer InstanceBuffer{ 
+	Instance instances[];
+};
 
-//push constants block
+// Push constants block
 layout( push_constant ) uniform constants
 {
-	mat4 render_matrix;
 	VertexBuffer vertexBuffer;
+	InstanceBuffer instanceBuffer;
 } PushConstants;
 
 void main() 
 {
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
-	
 	vec4 position = vec4(v.position, 1.0f);
 
-	gl_Position =  sceneData.viewproj * PushConstants.render_matrix *position; // pvm matrices
+	mat4 renderMatrix = PushConstants.instanceBuffer.instances[gl_InstanceIndex].translation * PushConstants.instanceBuffer.instances[gl_InstanceIndex].rotation * PushConstants.instanceBuffer.instances[gl_InstanceIndex].scale;
+	gl_Position =  sceneData.viewproj * renderMatrix * position; // pvm matrices
 
-	outNormal = mat3(transpose(inverse(PushConstants.render_matrix))) * v.normal;
+	outNormal = mat3(transpose(inverse(renderMatrix))) * v.normal;
 	outColor = v.color.xyz * materialData.colorFactors.xyz;	
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;

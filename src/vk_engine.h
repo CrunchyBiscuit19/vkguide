@@ -19,6 +19,7 @@ struct RenderObject {
 
     Bounds bounds;
 
+    MeshNode meshNode;
     MaterialInstance* material;
 
     glm::mat4 transform;
@@ -101,8 +102,13 @@ public:
     GPUSceneData sceneData;
     GLTFMetallicRough metalRoughMaterial;
 
-    DrawContext mainDrawContext; // List of things to draw
-    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+    AllocatedBuffer indirectVertexBuffer;
+    AllocatedBuffer indirectIndexBuffer;
+    std::unordered_map<MaterialInstance*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
+    std::unordered_map<MaterialInstance*, AllocatedBuffer> indirectBuffers;
+    AllocatedBuffer instanceBuffer;
+    DrawContext mainDrawContext;
+    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedModels;
 
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
@@ -140,6 +146,7 @@ public:
     void init_pipelines();
     void init_mesh_pipeline();
     void init_default_data();
+    void init_models(const std::vector<std::string>& modelPaths);
 
     void create_swapchain(uint32_t width, uint32_t height);
     void destroy_swapchain();
@@ -157,6 +164,9 @@ public:
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
     void draw_geometry(VkCommandBuffer cmd);
 
+    void create_indirect_commands();
+    void create_instanced_data();
+    void create_vertex_index_buffers();
     void update_scene();
 
     void cleanup_immediate();
