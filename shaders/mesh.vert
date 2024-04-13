@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_buffer_reference : require
+#extension GL_EXT_debug_printf : enable
 
 #include "input_structures.glsl"
 
@@ -48,4 +49,6 @@ void main()
 	outColor = v.color.xyz * materialData.colorFactors.xyz;	
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
+
+	debugPrintfEXT("Instance index is %d", gl_InstanceIndex);
 }

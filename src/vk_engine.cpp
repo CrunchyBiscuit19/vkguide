@@ -817,17 +817,18 @@ void VulkanEngine::create_indirect_commands()
     // Create one indirect buffer for each material based on associated indirect draw commands
     for (const auto& indirectBatch : indirectBatches) {
         const auto indirectCommand = indirectBatch.second;
+        const auto indirectCommandSize = indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-        const AllocatedBuffer staging = create_buffer(indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        const AllocatedBuffer staging = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
         void* data = staging.allocation->GetMappedData();
-        memcpy(data, indirectCommand.data(), indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand));
+        memcpy(data, indirectCommand.data(), indirectCommandSize);
 
-        indirectBuffers[indirectBatch.first] = create_buffer(indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        indirectBuffers[indirectBatch.first] = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
         immediate_submit([&](const VkCommandBuffer cmd) {
             VkBufferCopy indirectCopy {};
             indirectCopy.dstOffset = 0;
             indirectCopy.srcOffset = 0;
-            indirectCopy.size = sizeof(VkDrawIndexedIndirectCommand);
+            indirectCopy.size = indirectCommandSize;
             vkCmdCopyBuffer(cmd, staging.buffer, indirectBuffers[indirectBatch.first].buffer, 1, &indirectCopy);
         });
     }
@@ -841,20 +842,22 @@ void VulkanEngine::create_instanced_data()
         const int column = i / 100;
         const int row = i % 100;
         instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { column, 0, row });
-        instanceData[i].rotation = glm::toMat4(glm::rotation(glm::vec3(), glm::vec3()));
+        instanceData[i].rotation = glm::toMat4(rotation(glm::vec3(), glm::vec3()));
         instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 0.2f });
     }
 
-    const AllocatedBuffer staging = create_buffer(instanceData.size() * sizeof(InstanceData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = staging.allocation->GetMappedData();
-    memcpy(data, instanceData.data(), instanceData.size() * sizeof(InstanceData));
+    const auto instanceDataSize = instanceData.size() * sizeof(InstanceData);
 
-    instanceBuffer = create_buffer(instanceData.size() * sizeof(InstanceData), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    const AllocatedBuffer staging = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* data = staging.allocation->GetMappedData();
+    memcpy(data, instanceData.data(), instanceDataSize);
+
+    instanceBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
     immediate_submit([&](const VkCommandBuffer cmd) {
         VkBufferCopy instanceCopy {};
         instanceCopy.dstOffset = 0;
         instanceCopy.srcOffset = 0;
-        instanceCopy.size = sizeof(InstanceData);
+        instanceCopy.size = instanceDataSize;
         vkCmdCopyBuffer(cmd, staging.buffer, instanceBuffer.buffer, 1, &instanceCopy);
     });
 }
