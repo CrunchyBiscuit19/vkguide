@@ -330,7 +330,7 @@ void VulkanEngine::init_descriptors()
 
 void VulkanEngine::init_pipelines()
 {
-    init_mesh_pipeline();
+    //init_mesh_pipeline();
 
     metalRoughMaterial.build_pipelines(this);
 }
@@ -349,7 +349,7 @@ void VulkanEngine::init_mesh_pipeline()
     else
         fmt::print("Triangle vertex shader succesfully loaded.\n");
 
-    VkPushConstantRange bufferRange {}; // PROB
+    VkPushConstantRange bufferRange {};
     bufferRange.offset = 0;
     bufferRange.size = sizeof(GPUDrawPushConstants);
     bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -709,11 +709,9 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     for (const auto& indirectBatch : indirectBatches) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 0, 1, &gpuSceneDataDescriptor, 0, nullptr);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 0, 1, &indirectBatch.first->materialSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 1, 1, &indirectBatch.first->materialSet, 0, nullptr);
 
-        fmt::print("Pipeline layout {:p} for material descriptor set {:p}", static_cast<void*>(indirectBatch.first->pipeline->layout), static_cast<void*>(&indirectBatch.first->materialSet));
-
-        // Set dynamic viewportz
+        // Set dynamic viewport
         VkViewport viewport = {};
         viewport.x = 0;
         viewport.y = 0;
@@ -842,9 +840,9 @@ void VulkanEngine::create_instanced_data()
     for (int i = 0; i < OBJECTCOUNT; i++) {
         const int column = i / 100;
         const int row = i % 100;
-        instanceData[0].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { column, 0, row });
-        instanceData[0].rotation = glm::toMat4(glm::rotation(glm::vec3(), glm::vec3()));
-        instanceData[0].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 0.2f });
+        instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { column, 0, row });
+        instanceData[i].rotation = glm::toMat4(glm::rotation(glm::vec3(), glm::vec3()));
+        instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 0.2f });
     }
 
     const AllocatedBuffer staging = create_buffer(instanceData.size() * sizeof(InstanceData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);

@@ -199,7 +199,6 @@ struct InstanceData {
     glm::mat4 translation;
     glm::mat4 rotation;
     glm::mat4 scale;
-    uint32_t texIndex;
 };
 
 struct IndirectBatch {

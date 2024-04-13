@@ -17,21 +17,20 @@ struct Vertex {
 	float uv_y;
 	vec4 color;
 }; 
-layout(buffer_reference, std430) readonly buffer VertexBuffer{ 
-	Vertex vertices[];
-};
 struct Instance {
 	mat4 translation;
     mat4 rotation;
     mat4 scale;
-    int texIndex;
+};
+layout(buffer_reference, std430) readonly buffer VertexBuffer{ 
+	Vertex vertices[];
 };
 layout(buffer_reference, std430) readonly buffer InstanceBuffer{ 
 	Instance instances[];
 };
 
 // Push constants block
-layout( push_constant ) uniform constants
+layout( push_constant, std430 ) uniform constants
 {
 	VertexBuffer vertexBuffer;
 	InstanceBuffer instanceBuffer;
