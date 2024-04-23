@@ -46,6 +46,7 @@ public:
 
     SDL_Window* _window { nullptr };
     VkExtent2D _windowExtent { 1700, 900 };
+    float _renderScale { 1.0f };
 
     VkInstance _instance; // Vulkan library handle
     VkDebugUtilsMessengerEXT _debugMessenger; // Vulkan debug output handle
@@ -62,13 +63,6 @@ public:
     EngineStats stats;
     CVarSystem* cvarInstance { CVarSystem::Get() };
 
-    VkPipelineLayout _meshPipelineLayout;
-    VkPipeline _meshPipeline;
-    struct PipelineDeletionQueue {
-        DeletionQueue<VkPipelineLayout> pipelineLayouts;
-        DeletionQueue<VkPipeline> pipelines;
-    } _pipelineDeletionQueue;
-
     VkSwapchainKHR _swapchain;
     VkFormat _swapchainImageFormat;
     VkExtent2D _swapchainExtent;
@@ -81,32 +75,37 @@ public:
     } _swapchainDeletionQueue;
 
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
-    VkDescriptorSet _drawImageDescriptors;
+    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout; // Could remove this once gpuscenedata is moved into buffer
+
+    std::unordered_map<std::string, AllocatedImage> _stockImages;
+    VkDescriptorSetLayout _stockImageDescriptorLayout;
+
+    AllocatedImage _drawImage; // Drawn images before copying to swapchain
     VkDescriptorSetLayout _drawImageDescriptorLayout;
-    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
-    VkDescriptorSetLayout _singleImageDescriptorLayout;
+    VkDescriptorSet _drawImageDescriptors;
+    VkExtent2D _drawExtent;
+
+    AllocatedImage _depthImage;
+
     struct DescriptorDeletionQueue {
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
     } _descriptorDeletionQueue;
-
-    std::unordered_map<std::string, AllocatedImage> _stockImages;
-    AllocatedImage _drawImage; // Drawn images before copying to swapchain
-    AllocatedImage _depthImage;
-    VkExtent2D _drawExtent;
-    float _renderScale = 1.f;
     struct ImageDeletionQueue {
         DeletionQueue<VkImage> images;
         DeletionQueue<VkImageView> imageViews;
     } _imageDeletionQueue;
 
-    GPUSceneData sceneData;
-    GLTFMetallicRough metalRoughMaterial;
 
     AllocatedBuffer indirectVertexBuffer;
     AllocatedBuffer indirectIndexBuffer;
     std::unordered_map<MaterialInstance*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
     std::unordered_map<MaterialInstance*, AllocatedBuffer> indirectBuffers;
     AllocatedBuffer instanceBuffer;
+
+    PBRMaterial pbrMaterial; // Used to create descriptor set and pipeline, then update textures to descriptor as needed
+    SceneData sceneData;
+	AllocatedBuffer sceneBuffer;
+
     DrawContext mainDrawContext;
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedModels;
 
@@ -144,7 +143,6 @@ public:
     void init_sync_structures();
     void init_descriptors();
     void init_pipelines();
-    void init_mesh_pipeline();
     void init_default_data();
     void init_models(const std::vector<std::string>& modelPaths);
 
@@ -167,6 +165,7 @@ public:
     void create_indirect_commands();
     void create_instanced_data();
     void create_vertex_index_buffers();
+    void create_scene_buffer();
     void update_scene();
 
     void cleanup_immediate();

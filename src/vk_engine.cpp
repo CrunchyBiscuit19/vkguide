@@ -27,7 +27,7 @@ constexpr bool bUseValidationLayers = false;
 constexpr bool bUseValidationLayers = true;
 #endif
 enum {
-    OBJECTCOUNT = 1000
+    OBJECTCOUNT = 9000
 };
 
 bool is_visible(const RenderObject& obj, const glm::mat4& viewproj);
@@ -145,6 +145,8 @@ void VulkanEngine::init_vulkan()
     features12.bufferDeviceAddress = true;
     features12.descriptorIndexing = true;
     features12.drawIndirectCount = true;
+    features12.descriptorBindingPartiallyBound = true;
+    features12.runtimeDescriptorArray = true;
     VkPhysicalDeviceFeatures features {};
     features.multiDrawIndirect = true;
 
@@ -301,7 +303,7 @@ void VulkanEngine::init_descriptors()
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        _singleImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+        _stockImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
     // Allocate a descriptor set for our draw image
@@ -323,65 +325,14 @@ void VulkanEngine::init_descriptors()
         _frames[i]._frameDescriptors.init(_device, 1000, frame_sizes);
     }
 
-    _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, _singleImageDescriptorLayout, nullptr);
+    _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, _stockImageDescriptorLayout, nullptr);
     _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, _gpuSceneDataDescriptorLayout, nullptr);
     _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, _drawImageDescriptorLayout, nullptr);
 }
 
 void VulkanEngine::init_pipelines()
 {
-    //init_mesh_pipeline();
-
-    metalRoughMaterial.build_pipelines(this);
-}
-
-void VulkanEngine::init_mesh_pipeline()
-{
-    VkShaderModule triangleFragShader;
-    if (!vkutil::load_shader_module("../../shaders/tex_image.frag.spv", _device, &triangleFragShader))
-        fmt::print("Error when building the triangle fragment shader module.\n");
-    else
-        fmt::print("Triangle fragment shader succesfully loaded.\n");
-
-    VkShaderModule triangleVertexShader;
-    if (!vkutil::load_shader_module("../../shaders/colored_triangle_mesh.vert.spv", _device, &triangleVertexShader))
-        fmt::print("Error when building the triangle vertex shader module.\n");
-    else
-        fmt::print("Triangle vertex shader succesfully loaded.\n");
-
-    VkPushConstantRange bufferRange {};
-    bufferRange.offset = 0;
-    bufferRange.size = sizeof(GPUDrawPushConstants);
-    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-    pipeline_layout_info.pPushConstantRanges = &bufferRange;
-    pipeline_layout_info.pushConstantRangeCount = 1;
-    pipeline_layout_info.pSetLayouts = &_singleImageDescriptorLayout;
-    pipeline_layout_info.setLayoutCount = 1;
-    VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_meshPipelineLayout));
-
-    PipelineBuilder pipelineBuilder;
-    pipelineBuilder._pipelineLayout = _meshPipelineLayout;
-    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
-    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.set_multisampling_none();
-    // pipelineBuilder.enable_blending_additive();
-    pipelineBuilder.enable_blending_alphablend();
-    pipelineBuilder.disable_depthtest();
-    pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
-    pipelineBuilder.set_depth_format(_depthImage.imageFormat);
-    // pipelineBuilder.disable_depthtest();
-    pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-    _meshPipeline = pipelineBuilder.build_pipeline(_device);
-
-    vkDestroyShaderModule(_device, triangleFragShader, nullptr);
-    vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
-    _pipelineDeletionQueue.pipelineLayouts.push_resource(_device, _meshPipelineLayout, nullptr);
-    _pipelineDeletionQueue.pipelines.push_resource(_device, _meshPipeline, nullptr);
+    pbrMaterial.build_pipelines(this);
 }
 
 void VulkanEngine::init_default_data()
@@ -422,13 +373,13 @@ void VulkanEngine::init_default_data()
     vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
 
     // Set the uniform buffer for the material data
-    const AllocatedBuffer materialConstants = create_buffer(sizeof(GLTFMetallicRough::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-    auto* sceneUniformData = static_cast<GLTFMetallicRough::MaterialConstants*>(materialConstants.allocation->GetMappedData());
+    const AllocatedBuffer materialConstants = create_buffer(sizeof(PBRMaterial::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    auto* sceneUniformData = static_cast<PBRMaterial::MaterialConstants*>(materialConstants.allocation->GetMappedData());
     sceneUniformData->colorFactors = glm::vec4 { 1, 1, 1, 1 };
     sceneUniformData->metalRoughFactors = glm::vec4 { 1, 0.5, 0, 0 };
 
     // Default the material textures with white image texture
-    GLTFMetallicRough::MaterialResources materialResources;
+    PBRMaterial::MaterialResources materialResources;
     materialResources.colorImage = _stockImages["white"];
     materialResources.colorSampler = _defaultSamplerLinear;
     materialResources.metalRoughImage = _stockImages["white"];
@@ -601,26 +552,20 @@ void VulkanEngine::destroy_image(const AllocatedImage& img)
     _imageDeletionQueue.images.push_resource(_device, img.image, nullptr, _allocator, img.allocation);
 }
 
-GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
+MeshStagingBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
 {
     // Unefficient pattern of waiting for the GPU command to fully execute before continuing with CPU logic
 
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
-    GPUMeshBuffers newSurface;
+    MeshStagingBuffers newSurface;
 
     newSurface.vertexCount = vertices.size();
     newSurface.indexCount = indices.size();
 
-    newSurface.vertexBuffer = create_buffer(vertexBufferSize,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
-    newSurface.indexBuffer = create_buffer(indexBufferSize,
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
-    const VkBufferDeviceAddressInfo deviceAdressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = newSurface.vertexBuffer.buffer };
-    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAdressInfo);
+    newSurface.vertexBuffer = create_buffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    newSurface.indexBuffer = create_buffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
     const AllocatedBuffer staging = create_buffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     void* data = staging.allocation->GetMappedData();
@@ -658,22 +603,6 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) 
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
-    // Don't sorting the draw array as the objects are big.
-    // Instead, sort an array of indices to the draw array.
-    std::vector<uint32_t> opaque_draws;
-    opaque_draws.reserve(mainDrawContext.OpaqueSurfaces.size());
-    for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++)
-        if (is_visible(mainDrawContext.OpaqueSurfaces[i], sceneData.viewproj))
-            opaque_draws.push_back(i);
-    std::ranges::sort(opaque_draws, [&](const auto& iA, const auto& iB) {
-        const RenderObject& A = mainDrawContext.OpaqueSurfaces[iA];
-        const RenderObject& B = mainDrawContext.OpaqueSurfaces[iB];
-        // By material, then by indexbuffer.
-        if (A.material == B.material)
-            return A.indexBuffer < B.indexBuffer;
-        return A.material < B.material;
-    });
-
     stats.drawcall_count = 0;
     stats.triangle_count = 0;
     auto start = std::chrono::system_clock::now();
@@ -684,32 +613,21 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    // Allocate a new uniform buffer for the scene data
-    // GPU can load small amounts of data into its caches with VMA_MEMORY_USAGE_CPU_TO_GPU
-    const AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-    // Scene data binding
-    auto* sceneUniformData = static_cast<GPUSceneData*>(gpuSceneDataBuffer.allocation->GetMappedData());
-    *sceneUniformData = sceneData;
-    const VkDescriptorSet gpuSceneDataDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
-    DescriptorWriter writer;
-    writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    writer.update_set(_device, gpuSceneDataDescriptor);
-
-    // Push constants of Vertex and Instance data
-    GPUDrawPushConstants pushConstants;
-    VkBufferDeviceAddressInfo deviceVertexAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = indirectVertexBuffer.buffer };
+    // Push constants of Vertex, Instance, and Scene data buffer addresses
+    SSBOAddresses pushConstants;
+    const VkBufferDeviceAddressInfo deviceVertexAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = indirectVertexBuffer.buffer };
     pushConstants.vertexBuffer = vkGetBufferDeviceAddress(_device, &deviceVertexAddressInfo);
-    VkBufferDeviceAddressInfo deviceInstanceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = instanceBuffer.buffer };
+    const VkBufferDeviceAddressInfo deviceInstanceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = instanceBuffer.buffer };
     pushConstants.instanceBuffer = vkGetBufferDeviceAddress(_device, &deviceInstanceAddressInfo);
+    const VkBufferDeviceAddressInfo deviceSceneAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = sceneBuffer.buffer };
+    pushConstants.sceneBuffer = vkGetBufferDeviceAddress(_device, &deviceSceneAddressInfo);
 
     // Index buffer of all models in the scene
     vkCmdBindIndexBuffer(cmd, indirectIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     for (const auto& indirectBatch : indirectBatches) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 0, 1, &gpuSceneDataDescriptor, 0, nullptr);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 1, 1, &indirectBatch.first->materialSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 0, 1, &indirectBatch.first->materialSet, 0, nullptr);
 
         // Set dynamic viewport
         VkViewport viewport = {};
@@ -729,7 +647,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         scissor.extent.height = _drawExtent.height;
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        vkCmdPushConstants(cmd, indirectBatch.first->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+        vkCmdPushConstants(cmd, indirectBatch.first->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
         vkCmdDrawIndexedIndirect(cmd, indirectBuffers[indirectBatch.first].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
     }
@@ -901,6 +819,23 @@ void VulkanEngine::create_vertex_index_buffers()
     }
 }
 
+void VulkanEngine::create_scene_buffer()
+{
+    sceneBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    const AllocatedBuffer staging = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* data = staging.allocation->GetMappedData();
+    memcpy(data, &sceneData, sizeof(SceneData));
+
+    immediate_submit([&](const VkCommandBuffer cmd) {
+        VkBufferCopy sceneCopy {};
+        sceneCopy.dstOffset = 0;
+        sceneCopy.srcOffset = 0;
+        sceneCopy.size = sizeof(SceneData);
+        vkCmdCopyBuffer(cmd, staging.buffer, sceneBuffer.buffer, 1, &sceneCopy);
+    });
+}
+
 void VulkanEngine::update_scene()
 {
     const auto start = std::chrono::system_clock::now();
@@ -910,9 +845,6 @@ void VulkanEngine::update_scene()
 
     indirectBatches.clear();
     indirectBuffers.clear();
-    for (const auto& loadedModel : loadedModels | std::views::values) {
-        loadedModel->ToRenderObject(glm::mat4(), mainDrawContext);
-    }
     create_indirect_commands();
     create_instanced_data();
     create_vertex_index_buffers();
@@ -920,12 +852,12 @@ void VulkanEngine::update_scene()
     sceneData.ambientColor = glm::vec4(.1f);
     sceneData.sunlightColor = glm::vec4(1.f);
     sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
-
     mainCamera.update();
     sceneData.view = mainCamera.getViewMatrix();
     sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
     sceneData.proj[1][1] *= -1;
     sceneData.viewproj = sceneData.proj * sceneData.view;
+    create_scene_buffer();
 
     const auto end = std::chrono::system_clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -951,8 +883,6 @@ void VulkanEngine::cleanup_descriptors()
 
 void VulkanEngine::cleanup_pipelines()
 {
-    _pipelineDeletionQueue.pipelineLayouts.flush();
-    _pipelineDeletionQueue.pipelines.flush();
 }
 
 void VulkanEngine::cleanup_samplers()
@@ -998,7 +928,7 @@ void VulkanEngine::cleanup()
 
         // GLTF scenes cleared by own destructor.
         loadedModels.clear();
-        metalRoughMaterial.cleanup_resources(_device);
+        pbrMaterial.cleanup_resources(_device);
         for (FrameData& frame : _frames)
             frame.cleanup(_device);
         cleanup_immediate();

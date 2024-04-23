@@ -3,7 +3,7 @@
 #include <vk_pipelines.h>
 #include <vk_materials.h>
 
-void GLTFMetallicRough::build_pipelines(VulkanEngine* engine)
+void PBRMaterial::build_pipelines(VulkanEngine* engine)
 {
     VkShaderModule meshFragShader;
     if (!vkutil::load_shader_module("../../shaders/mesh.frag.spv", engine->_device, &meshFragShader))
@@ -23,9 +23,9 @@ void GLTFMetallicRough::build_pipelines(VulkanEngine* engine)
     layoutBuilder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    VkDescriptorSetLayout layouts[] = { engine->_gpuSceneDataDescriptorLayout, materialLayout };
+    VkDescriptorSetLayout layouts[] = { materialLayout };
     VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
-    mesh_layout_info.setLayoutCount = 2;
+    mesh_layout_info.setLayoutCount = 1;
     mesh_layout_info.pSetLayouts = layouts;
     mesh_layout_info.pPushConstantRanges = &matrixRange;
     mesh_layout_info.pushConstantRangeCount = 1;
@@ -71,14 +71,14 @@ void GLTFMetallicRough::build_pipelines(VulkanEngine* engine)
         nullptr);
 }
 
-void GLTFMetallicRough::cleanup_resources(VkDevice device)
+void PBRMaterial::cleanup_resources(VkDevice device)
 {
     _materialDeletionQueue.descriptorSetLayoutDeletion.flush();
     _materialDeletionQueue.pipelineLayoutDeletion.flush();
     _materialDeletionQueue.pipelineDeletion.flush();
 }
 
-MaterialInstance GLTFMetallicRough::write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator)
+MaterialInstance PBRMaterial::write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator)
 {
     MaterialInstance matData;
     matData.passType = pass;

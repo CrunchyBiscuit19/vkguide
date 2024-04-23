@@ -25,7 +25,7 @@ struct GLTFMaterial {
 
 class VulkanEngine;
 
-struct GLTFMetallicRough {
+struct PBRMaterial {
     MaterialPipeline opaquePipeline;
     MaterialPipeline transparentPipeline;
 
@@ -46,6 +46,17 @@ struct GLTFMetallicRough {
         VkBuffer dataBuffer;
         uint32_t dataBufferOffset;
     };
+    // Base color factor
+    // Base color texture (index / texcoord)
+    // Metalness factor
+    // Roughness factor
+    // Metallic-Roughness texture (index / texcoord)
+    // Normal texture
+    // Occlusion texture
+    // Emissive factor
+    // Emissive texture
+    // doubleSided boolean
+    // alphaMode [OPAQUE, MASK, BLEND] defines how alpha is interpreted
 
     DescriptorWriter writer;
 

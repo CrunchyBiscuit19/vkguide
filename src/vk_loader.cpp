@@ -110,10 +110,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     }
 
     // Create buffer to hold the material data
-    file.materialDataBuffer = engine->create_buffer(sizeof(GLTFMetallicRough::MaterialConstants) * gltf.materials.size(),
+    file.materialDataBuffer = engine->create_buffer(sizeof(PBRMaterial::MaterialConstants) * gltf.materials.size(),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     int data_index = 0;
-    auto sceneMaterialConstants = static_cast<GLTFMetallicRough::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
+    auto sceneMaterialConstants = static_cast<PBRMaterial::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
 
     // Load materials
     for (fastgltf::Material& mat : gltf.materials) {
@@ -121,7 +121,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         materials.push_back(newMat);
         file.materials[mat.name.c_str()] = newMat;
 
-        GLTFMetallicRough::MaterialConstants constants;
+        PBRMaterial::MaterialConstants constants;
         constants.colorFactors.x = mat.pbrData.baseColorFactor[0];
         constants.colorFactors.y = mat.pbrData.baseColorFactor[1];
         constants.colorFactors.z = mat.pbrData.baseColorFactor[2];
@@ -135,7 +135,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             passType = MaterialPass::Transparent;
 
         // Default the material textures
-        GLTFMetallicRough::MaterialResources materialResources;
+        PBRMaterial::MaterialResources materialResources;
         materialResources.colorImage = engine->_stockImages["white"];
         materialResources.colorSampler = engine->_defaultSamplerLinear;
         materialResources.metalRoughImage = engine->_stockImages["white"];
@@ -143,7 +143,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
 
         // Set the uniform buffer for the material data
         materialResources.dataBuffer = file.materialDataBuffer.buffer;
-        materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallicRough::MaterialConstants);
+        materialResources.dataBufferOffset = data_index * sizeof(PBRMaterial::MaterialConstants);
         // Grab textures from gltf file
         if (mat.pbrData.baseColorTexture.has_value()) {
             size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
@@ -152,7 +152,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             materialResources.colorSampler = file.samplers[sampler];
         }
         // Build material
-        newMat->data = engine->metalRoughMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
+        newMat->data = engine->pbrMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
 
         data_index++;
     }

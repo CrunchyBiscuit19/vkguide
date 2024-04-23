@@ -173,7 +173,7 @@ struct Vertex {
     glm::vec4 color;
 };
 
-struct GPUMeshBuffers {
+struct MeshStagingBuffers {
     AllocatedBuffer indexBuffer;
     int indexCount;
     AllocatedBuffer vertexBuffer;
@@ -181,12 +181,13 @@ struct GPUMeshBuffers {
     VkDeviceAddress vertexBufferAddress;
 };
 
-struct GPUDrawPushConstants {
+struct SSBOAddresses {
     VkDeviceAddress vertexBuffer;
     VkDeviceAddress instanceBuffer;
+    VkDeviceAddress sceneBuffer;
 };
 
-struct GPUSceneData {
+struct SceneData {
     glm::mat4 view;
     glm::mat4 proj;
     glm::mat4 viewproj;

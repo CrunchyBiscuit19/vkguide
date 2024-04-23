@@ -49,7 +49,7 @@ struct Node : public IRenderable {
 struct MeshAsset {
     std::string name;
     std::vector<GeoSurface> surfaces; // Mesh primitives, one material per primitve
-    GPUMeshBuffers meshBuffers;
+    MeshStagingBuffers meshBuffers;
 };
 
 struct MeshNode : public Node {
