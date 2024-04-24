@@ -34,5 +34,5 @@ public:
 
     void processSDLEvent(const SDL_Event& e);
 
-    void update();
+    void updatePosition(float deltaTime, float expectedDeltaTime);
 };

@@ -67,14 +67,14 @@ glm::mat4 Camera::getRotationMatrix() const
     return glm::toMat4(yawRotation) * glm::toMat4(pitchRotation);
 }
 
-void Camera::update()
+void Camera::updatePosition(float deltaTime, float expectedDeltaTime)
 {
     switch (movementMode) {
     case MINECRAFT:
-        position += glm::vec3(getYawMatrix() * glm::vec4(velocity * 0.5f, 0.f));
+        position += glm::vec3(getYawMatrix() * glm::vec4(velocity * 0.5f * (deltaTime / expectedDeltaTime), 0.f));
         break;
     case LOOKANDGO:
-        position += glm::vec3(getRotationMatrix() * glm::vec4(velocity * 0.5f, 0.f));
+        position += glm::vec3(getRotationMatrix() * glm::vec4(velocity * 0.5f * (deltaTime / expectedDeltaTime), 0.f));
         break;
     }
 }

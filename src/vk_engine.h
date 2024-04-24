@@ -11,6 +11,8 @@
 #include <vk_materials.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
+constexpr unsigned int ONE_SECOND_IN_MILLISECONDS = 1000;
+constexpr unsigned int EXPECTED_FRAME_RATE = 60;
 
 struct RenderObject {
     uint32_t indexCount;
