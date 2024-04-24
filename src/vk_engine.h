@@ -157,7 +157,7 @@ public:
     AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     void destroy_image(const AllocatedImage& img);
 
-    GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+    MeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
     void draw_geometry(VkCommandBuffer cmd);

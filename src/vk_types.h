@@ -173,7 +173,7 @@ struct Vertex {
     glm::vec4 color;
 };
 
-struct MeshStagingBuffers {
+struct MeshBuffers {
     AllocatedBuffer indexBuffer;
     int indexCount;
     AllocatedBuffer vertexBuffer;
