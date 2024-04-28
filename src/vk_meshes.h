@@ -11,7 +11,7 @@ struct Bounds {
     glm::vec3 extents;
 };
 
-struct GeoSurface {
+struct Primitive {
     uint32_t startIndex;
     uint32_t count;
     std::shared_ptr<GLTFMaterial> material;
@@ -31,7 +31,7 @@ struct Node : public IRenderable {
     std::vector<std::shared_ptr<Node>> children;
 
     glm::mat4 localTransform;
-    glm::mat4 worldTransform; // proj * view * localTransform
+    glm::mat4 worldTransform;
 
     void refreshTransform(const glm::mat4& parentMatrix)
     {
@@ -46,14 +46,14 @@ struct Node : public IRenderable {
     }
 };
 
-struct MeshAsset {
+struct MeshData {
     std::string name;
-    std::vector<GeoSurface> surfaces; // Mesh primitives, one material per primitve
+    std::vector<Primitive> primitives; // Mesh primitives, one material per primitve
     MeshBuffers meshBuffers;
 };
 
 struct MeshNode : public Node {
-    std::shared_ptr<MeshAsset> mesh;
+    std::shared_ptr<MeshData> mesh;
 
     void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };

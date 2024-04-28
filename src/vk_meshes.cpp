@@ -6,7 +6,7 @@ void MeshNode::ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
     // If the function gets called multiple times, we can draw the same multiple times with different transforms
     const glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
-    for (const auto& s : mesh->surfaces) {
+    for (const auto& s : mesh->primitives) {
         RenderObject def;
         def.indexCount = s.count;
         def.firstIndex = s.startIndex;

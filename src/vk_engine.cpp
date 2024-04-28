@@ -66,7 +66,7 @@ void VulkanEngine::init()
     init_pipelines();
     init_imgui();
     init_default_data();
-    init_models({ "../../assets/AntiqueCamera.glb" });
+    init_models({ "../../assets/AntiqueCmaera/AntiqueCamera.glb" });
     mainCamera.init();
 
     // Everything went fine
@@ -332,7 +332,7 @@ void VulkanEngine::init_descriptors()
 
 void VulkanEngine::init_pipelines()
 {
-    pbrMaterial.build_pipelines(this);
+    globalPbrMaterial.build_pipelines(this);
 }
 
 void VulkanEngine::init_default_data()
@@ -724,7 +724,7 @@ void VulkanEngine::create_indirect_commands()
         indirectCmd.vertexOffset = 0;
 
         for (const auto& mesh : model->meshes | std::views::values) {
-            for (const auto& primitive : mesh->surfaces) {
+            for (const auto& primitive : mesh->primitives) {
                 indirectCmd.indexCount = primitive.count;
                 indirectCmd.firstIndex = primitive.startIndex;
                 indirectBatches[&primitive.material->data].push_back(indirectCmd);
@@ -928,7 +928,7 @@ void VulkanEngine::cleanup()
 
         // GLTF scenes cleared by own destructor.
         loadedModels.clear();
-        pbrMaterial.cleanup_resources(_device);
+        globalPbrMaterial.cleanup_resources(_device);
         for (FrameData& frame : _frames)
             frame.cleanup(_device);
         cleanup_immediate();

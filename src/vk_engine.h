@@ -104,7 +104,7 @@ public:
     std::unordered_map<MaterialInstance*, AllocatedBuffer> indirectBuffers;
     AllocatedBuffer instanceBuffer;
 
-    PBRMaterial pbrMaterial; // Used to create descriptor set and pipeline, then update textures to descriptor as needed
+    PBRMaterial globalPbrMaterial; // Used to create descriptor set and pipeline, then update textures to descriptor as needed
     SceneData sceneData;
 	AllocatedBuffer sceneBuffer;
 

@@ -91,7 +91,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     }
 
     // Temporal arrays for all the objects to use while creating the GLTF data
-    std::vector<std::shared_ptr<MeshAsset>> meshes;
+    std::vector<std::shared_ptr<MeshData>> meshes;
     std::vector<std::shared_ptr<Node>> nodes;
     std::vector<AllocatedImage> images;
     std::vector<std::shared_ptr<GLTFMaterial>> materials;
@@ -152,7 +152,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             materialResources.colorSampler = file.samplers[sampler];
         }
         // Build material
-        newMat->data = engine->pbrMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
+        newMat->data = engine->globalPbrMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
 
         data_index++;
     }
@@ -162,7 +162,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     std::vector<uint32_t> indices;
     std::vector<Vertex> vertices;
     for (fastgltf::Mesh& mesh : gltf.meshes) {
-        std::shared_ptr<MeshAsset> newmesh = std::make_shared<MeshAsset>();
+        std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
         meshes.push_back(newmesh);
         file.meshes[mesh.name.c_str()] = newmesh;
         newmesh->name = mesh.name;
@@ -172,7 +172,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         vertices.clear();
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
-            GeoSurface newSurface;
+            Primitive newSurface;
             newSurface.startIndex = static_cast<uint32_t>(indices.size());
             newSurface.count = static_cast<uint32_t>(gltf.accessors[p.indicesAccessor.value()].count);
 
@@ -251,7 +251,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             newSurface.bounds.extents = (maxpos - minpos) / 2.f;
             newSurface.bounds.sphereRadius = glm::length(newSurface.bounds.extents);
 
-            newmesh->surfaces.push_back(newSurface);
+            newmesh->primitives.push_back(newSurface);
         }
 
         newmesh->meshBuffers = engine->upload_mesh(indices, vertices);
@@ -292,7 +292,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             node.transform);
     }
 
-    // Run loop again to setup transform hierarchy
+    // Loop GLTF asset nodes, then loop their child node indexes, then use those indexes to access and connect the temporal varirable nodes 
     for (int i = 0; i < gltf.nodes.size(); i++) {
         fastgltf::Node& node = gltf.nodes[i];
         std::shared_ptr<Node>& sceneNode = nodes[i];

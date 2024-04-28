@@ -24,7 +24,7 @@
 #include <vk_descriptors.h>
 
 struct MaterialInstance;
-struct MeshAsset;
+struct MeshData;
 
 template <class T0>
 struct VulkanResource {
@@ -203,7 +203,7 @@ struct InstanceData {
 };
 
 struct IndirectBatch {
-    MeshAsset* mesh;
+    MeshData* mesh;
     MaterialInstance* material;
     VkDrawIndexedIndirectCommand indirectCommand;
 };
