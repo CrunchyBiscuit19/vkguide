@@ -1,6 +1,6 @@
 ﻿#include <vk_engine.h>
-#include <vk_types.h>
 #include <vk_loader.h>
+#include <vk_types.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -70,12 +70,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         return {};
     }
 
-    // Descriptor sets and descriptor types
-    std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } };
-    file.descriptorPool.init(engine->_device, gltf.materials.size(), sizes);
-
     // Load samplers
     for (fastgltf::Sampler& sampler : gltf.samplers) {
         VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .pNext = nullptr };
@@ -94,7 +88,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     std::vector<std::shared_ptr<MeshData>> meshes;
     std::vector<std::shared_ptr<Node>> nodes;
     std::vector<AllocatedImage> images;
-    std::vector<std::shared_ptr<GLTFMaterial>> materials;
+    std::vector<std::shared_ptr<PbrMaterial>> materials;
 
     // Load textures, with checkerboard as placeholder for loading errors
     images.reserve(gltf.images.size());
@@ -109,52 +103,65 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         }
     }
 
-    // Create buffer to hold the material data
-    file.materialDataBuffer = engine->create_buffer(sizeof(PBRMaterial::MaterialConstants) * gltf.materials.size(),
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-    int data_index = 0;
-    auto sceneMaterialConstants = static_cast<PBRMaterial::MaterialConstants*>(file.materialDataBuffer.info.pMappedData);
-
     // Load materials
     for (fastgltf::Material& mat : gltf.materials) {
-        std::shared_ptr<GLTFMaterial> newMat = std::make_shared<GLTFMaterial>();
+        std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
         materials.push_back(newMat);
         file.materials[mat.name.c_str()] = newMat;
 
-        PBRMaterial::MaterialConstants constants;
-        constants.colorFactors.x = mat.pbrData.baseColorFactor[0];
-        constants.colorFactors.y = mat.pbrData.baseColorFactor[1];
-        constants.colorFactors.z = mat.pbrData.baseColorFactor[2];
-        constants.colorFactors.w = mat.pbrData.baseColorFactor[3];
-        constants.metalRoughFactors.x = mat.pbrData.metallicFactor;
-        constants.metalRoughFactors.y = mat.pbrData.roughnessFactor;
-        sceneMaterialConstants[data_index] = constants; // Write material parameters to buffer
+        newMat->data.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
+        newMat->data.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
+        newMat->data.constants.baseFactor.z = mat.pbrData.baseColorFactor[2];
+        newMat->data.constants.baseFactor.w = mat.pbrData.baseColorFactor[3];
+        newMat->data.constants.metallicFactor = mat.pbrData.metallicFactor;
+        newMat->data.constants.roughnessFactor = mat.pbrData.roughnessFactor;
+        newMat->data.constants.emissiveFactor.x = mat.emissiveFactor[0];
+        newMat->data.constants.emissiveFactor.y = mat.emissiveFactor[1];
+        newMat->data.constants.emissiveFactor.z = mat.emissiveFactor[2];
 
-        MaterialPass passType = MaterialPass::MainColor;
-        if (mat.alphaMode == fastgltf::AlphaMode::Blend)
-            passType = MaterialPass::Transparent;
+        newMat->data.alphaMode = mat.alphaMode;
+        newMat->data.doubleSided = mat.doubleSided;
 
         // Default the material textures
-        PBRMaterial::MaterialResources materialResources;
-        materialResources.colorImage = engine->_stockImages["white"];
-        materialResources.colorSampler = engine->_defaultSamplerLinear;
-        materialResources.metalRoughImage = engine->_stockImages["white"];
-        materialResources.metalRoughSampler = engine->_defaultSamplerLinear;
+        newMat->data.resources.base.image = engine->_stockImages["white"];
+        newMat->data.resources.base.sampler = engine->_defaultSamplerLinear;
+        newMat->data.resources.metallicRoughness.image = engine->_stockImages["white"];
+        newMat->data.resources.metallicRoughness.sampler = engine->_defaultSamplerLinear;
 
-        // Set the uniform buffer for the material data
-        materialResources.dataBuffer = file.materialDataBuffer.buffer;
-        materialResources.dataBufferOffset = data_index * sizeof(PBRMaterial::MaterialConstants);
         // Grab textures from gltf file
         if (mat.pbrData.baseColorTexture.has_value()) {
             size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
             size_t sampler = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value();
-            materialResources.colorImage = images[img];
-            materialResources.colorSampler = file.samplers[sampler];
+            newMat->data.resources.base.image = images[img];
+            newMat->data.resources.base.sampler = file.samplers[sampler];
         }
-        // Build material
-        newMat->data = engine->globalPbrMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
+        if (mat.pbrData.metallicRoughnessTexture.has_value()) {
+            size_t img = gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].imageIndex.value();
+            size_t sampler = gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].samplerIndex.value();
+            newMat->data.resources.metallicRoughness.image = images[img];
+            newMat->data.resources.metallicRoughness.sampler = file.samplers[sampler];
+        }
+        if (mat.normalTexture.has_value()) {
+            size_t img = gltf.textures[mat.normalTexture.value().textureIndex].imageIndex.value();
+            size_t sampler = gltf.textures[mat.normalTexture.value().textureIndex].samplerIndex.value();
+            newMat->data.resources.normal.image = images[img];
+            newMat->data.resources.normal.sampler = file.samplers[sampler];
+        }
+        if (mat.occlusionTexture.has_value()) {
+            size_t img = gltf.textures[mat.occlusionTexture.value().textureIndex].imageIndex.value();
+            size_t sampler = gltf.textures[mat.occlusionTexture.value().textureIndex].samplerIndex.value();
+            newMat->data.resources.occlusion.image = images[img];
+            newMat->data.resources.occlusion.sampler = file.samplers[sampler];
+        }
+        if (mat.emissiveTexture.has_value()) {
+            size_t img = gltf.textures[mat.emissiveTexture.value().textureIndex].imageIndex.value();
+            size_t sampler = gltf.textures[mat.emissiveTexture.value().textureIndex].samplerIndex.value();
+            newMat->data.resources.emissive.image = images[img];
+            newMat->data.resources.emissive.sampler = file.samplers[sampler];
+        }
 
-        data_index++;
+        // Build material
+        newMat->create_material();
     }
 
     // Load meshes
@@ -292,7 +299,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             node.transform);
     }
 
-    // Loop GLTF asset nodes, then loop their child node indexes, then use those indexes to access and connect the temporal varirable nodes 
+    // Loop GLTF asset nodes, then loop their child node indexes, then use those indexes to access and connect the temporal varirable nodes
     for (int i = 0; i < gltf.nodes.size(); i++) {
         fastgltf::Node& node = gltf.nodes[i];
         std::shared_ptr<Node>& sceneNode = nodes[i];
@@ -383,19 +390,10 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
     return newImage;
 }
 
-void LoadedGLTF::ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
-{
-    // create renderables from the scenenodes
-    for (auto& n : topNodes) {
-        n->ToRenderObject(topMatrix, ctx);
-    }
-}
-
-void LoadedGLTF::clearAll()
+void LoadedGLTF::clearAll() const
 {
     const VkDevice device = creator->_device;
 
-    descriptorPool.destroy_pools(device);
     for (const auto& sampler : samplers)
         vkDestroySampler(device, sampler, nullptr);
 }

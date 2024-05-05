@@ -1,73 +1,51 @@
 #pragma once
 
+#include "fastgltf/types.hpp"
 #include <vk_types.h>
+
+class VulkanEngine;
+
+struct MaterialImage {
+    AllocatedImage image;
+    VkSampler sampler;
+};
+
+struct MaterialConstants {
+    glm::vec4 baseFactor;
+    glm::vec4 emissiveFactor;
+    float metallicFactor;
+    float roughnessFactor;
+};
+
+struct MaterialResources {
+    MaterialImage base;
+    MaterialImage metallicRoughness;
+    MaterialImage normal;
+    MaterialImage occlusion;
+    MaterialImage emissive;
+};
+
+struct PbrData {
+    bool doubleSided;
+    fastgltf::AlphaMode alphaMode;
+    MaterialConstants constants;
+    MaterialResources resources;
+};
 
 struct MaterialPipeline {
     VkPipeline pipeline;
     VkPipelineLayout layout;
 };
 
-enum class MaterialPass : uint8_t {
-    MainColor,
-    Transparent,
-    Other
-};
+class PbrMaterial {
+    VulkanEngine* engine;
+    MaterialPipeline pipeline;
 
-struct MaterialInstance {
-    MaterialPipeline* pipeline;
-    VkDescriptorSet materialSet;
-    MaterialPass passType;
-};
+public:
+    PbrData data;
+    int index;
 
-struct GLTFMaterial {
-    MaterialInstance data;
-};
+    PbrMaterial(VulkanEngine* engine);
 
-class VulkanEngine;
-
-struct PBRMaterial {
-    MaterialPipeline opaquePipeline;
-    MaterialPipeline transparentPipeline;
-
-    VkDescriptorSetLayout materialLayout;
-
-    struct MaterialConstants {
-        glm::vec4 colorFactors;
-        glm::vec4 metalRoughFactors;
-        // Padding, we need it anyway for uniform buffers
-        glm::vec4 extra[14];
-    };
-
-    struct MaterialResources {
-        AllocatedImage colorImage;
-        VkSampler colorSampler;
-        AllocatedImage metalRoughImage;
-        VkSampler metalRoughSampler;
-        VkBuffer dataBuffer;
-        uint32_t dataBufferOffset;
-    };
-    // Base color factor
-    // Base color texture (index / texcoord)
-    // Metalness factor
-    // Roughness factor
-    // Metallic-Roughness texture (index / texcoord)
-    // Normal texture
-    // Occlusion texture
-    // Emissive factor
-    // Emissive texture
-    // doubleSided boolean
-    // alphaMode [OPAQUE, MASK, BLEND] defines how alpha is interpreted
-
-    DescriptorWriter writer;
-
-    struct MaterialDeletionQueue {
-        DeletionQueue<VkDescriptorSetLayout> descriptorSetLayoutDeletion;
-        DeletionQueue<VkPipelineLayout> pipelineLayoutDeletion;
-        DeletionQueue<VkPipeline> pipelineDeletion;
-    } _materialDeletionQueue;
-
-    void build_pipelines(VulkanEngine* engine);
-    void cleanup_resources(VkDevice device);
-
-    MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
+    void create_material();
 };

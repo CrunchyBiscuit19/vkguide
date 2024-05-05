@@ -1,11 +1,11 @@
 ﻿#include <vk_descriptors.h>
 #include "vk_types.h"
 
-void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType type)
+void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType type, uint32_t count, VkDescriptorBindingFlags flags)
 {
     VkDescriptorSetLayoutBinding newbind {};
     newbind.binding = binding;
-    newbind.descriptorCount = 1;
+    newbind.descriptorCount = count;
     newbind.descriptorType = type;
 
     bindings.push_back(newbind);
@@ -16,7 +16,7 @@ void DescriptorLayoutBuilder::clear()
     bindings.clear();
 }
 
-VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device, VkShaderStageFlags shaderStages)
+VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device, VkShaderStageFlags shaderStages, VkDescriptorSetLayoutCreateFlags flags)
 {
     for (auto& b : bindings) {
         b.stageFlags |= shaderStages;

@@ -7,8 +7,8 @@
 #include <cvars.h>
 #include <vk_descriptors.h>
 #include <vk_loader.h>
-#include <vk_types.h>
 #include <vk_materials.h>
+#include <vk_types.h>
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 constexpr unsigned int ONE_SECOND_IN_MILLISECONDS = 1000;
@@ -22,7 +22,7 @@ struct RenderObject {
     Bounds bounds;
 
     MeshNode meshNode;
-    MaterialInstance* material;
+    PbrData* material;
 
     glm::mat4 transform;
     VkDeviceAddress vertexBufferAddress;
@@ -43,13 +43,20 @@ struct EngineStats {
 
 class VulkanEngine {
 public:
+    // Engine state
     bool _isInitialized { false };
     bool _stopRendering { false };
 
+    // Stats
+    EngineStats stats;
+    CVarSystem* cvarInstance { CVarSystem::Get() };
+
+    // Window object
     SDL_Window* _window { nullptr };
     VkExtent2D _windowExtent { 1700, 900 };
     float _renderScale { 1.0f };
 
+    // Vulkan stuff
     VkInstance _instance; // Vulkan library handle
     VkDebugUtilsMessengerEXT _debugMessenger; // Vulkan debug output handle
 
@@ -60,11 +67,18 @@ public:
     VkQueue _graphicsQueue;
     uint32_t _graphicsQueueFamily;
 
+    // Frames
+    int _frameNumber { 0 };
+    FrameData _frames[FRAME_OVERLAP];
+    FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
+
+    // VMA
     VmaAllocator _allocator;
 
-    EngineStats stats;
-    CVarSystem* cvarInstance { CVarSystem::Get() };
+    // Descriptor allocator
+    DescriptorAllocatorGrowable _globalDescriptorAllocator;
 
+    // Swapchain
     VkSwapchainKHR _swapchain;
     VkFormat _swapchainImageFormat;
     VkExtent2D _swapchainExtent;
@@ -76,9 +90,12 @@ public:
         DeletionQueue<VkImageView> imageViews;
     } _swapchainDeletionQueue;
 
-    DescriptorAllocatorGrowable _globalDescriptorAllocator;
-    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout; // Could remove this once gpuscenedata is moved into buffer
+    // Pipeline things
+    std::vector<char> pipelineCacheData;
+    VkPipelineCache pipelineCache;
+    std::unordered_map<std::size_t, MaterialPipeline> pipelinesCreated;
 
+    // Images
     std::unordered_map<std::string, AllocatedImage> _stockImages;
     VkDescriptorSetLayout _stockImageDescriptorLayout;
 
@@ -89,44 +106,38 @@ public:
 
     AllocatedImage _depthImage;
 
-    struct DescriptorDeletionQueue {
-        DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
-    } _descriptorDeletionQueue;
-    struct ImageDeletionQueue {
-        DeletionQueue<VkImage> images;
-        DeletionQueue<VkImageView> imageViews;
-    } _imageDeletionQueue;
-
-
+    // Draw indirect-related
     AllocatedBuffer indirectVertexBuffer;
     AllocatedBuffer indirectIndexBuffer;
-    std::unordered_map<MaterialInstance*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
-    std::unordered_map<MaterialInstance*, AllocatedBuffer> indirectBuffers;
+    std::unordered_map<PbrData*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
+    std::unordered_map<PbrData*, AllocatedBuffer> indirectBuffers;
     AllocatedBuffer instanceBuffer;
 
-    PBRMaterial globalPbrMaterial; // Used to create descriptor set and pipeline, then update textures to descriptor as needed
+    // Scene data
     SceneData sceneData;
-	AllocatedBuffer sceneBuffer;
+    AllocatedBuffer sceneBuffer;
 
-    DrawContext mainDrawContext;
+    // Models and materials
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedModels;
+    AllocatedBuffer materialConstantsBuffer;
 
+    // Samplers
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
     struct SamplerDeletionQueue {
         DeletionQueue<VkSampler> samplers;
     } _samplerDeletionQueue;
 
+    // Camera
     Camera mainCamera;
 
-    int _frameNumber { 0 };
-    FrameData _frames[FRAME_OVERLAP];
-    FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
-
+    // Immediate submit
     VkFence _immFence;
     VkCommandBuffer _immCommandBuffer;
     VkCommandPool _immCommandPool;
     VkDescriptorPool _imguiDescriptorPool;
+
+    // Deletion queues
     struct ImmediateDeletionQueue {
         DeletionQueue<VkFence> fences;
         DeletionQueue<VkCommandPool> commandPools;
@@ -136,6 +147,14 @@ public:
         DeletionQueue<VkBuffer> buffers;
     } _genericBufferDeletionQueue;
 
+    struct DescriptorDeletionQueue {
+        DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
+    } _descriptorDeletionQueue;
+    struct ImageDeletionQueue {
+        DeletionQueue<VkImage> images;
+        DeletionQueue<VkImageView> imageViews;
+    } _imageDeletionQueue;
+
     static VulkanEngine& Get();
     void init(); // initializes everything in the engine
     void init_imgui();
@@ -144,6 +163,7 @@ public:
     void init_commands();
     void init_sync_structures();
     void init_descriptors();
+    void init_pipeline_caches();
     void init_pipelines();
     void init_default_data();
     void init_models(const std::vector<std::string>& modelPaths);
@@ -151,6 +171,10 @@ public:
     void create_swapchain(uint32_t width, uint32_t height);
     void destroy_swapchain();
     void resize_swapchain();
+
+    VkPipelineCacheCreateInfo read_pipeline_cache(const std::string& filename);
+    void write_pipeline_cache(const std::string& filename);
+    MaterialPipeline create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode);
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     void destroy_buffer(const AllocatedBuffer& buffer);
@@ -168,11 +192,13 @@ public:
     void create_instanced_data();
     void create_vertex_index_buffers();
     void create_scene_buffer();
+    void create_material_buffer();
     void update_scene();
 
     void cleanup_immediate();
     void cleanup_swapchain();
     void cleanup_descriptors();
+    void cleanup_pipeline_caches();
     void cleanup_pipelines();
     void cleanup_samplers();
     void cleanup_images();

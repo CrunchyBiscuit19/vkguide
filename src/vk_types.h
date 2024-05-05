@@ -8,7 +8,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <ranges>
 #include <span>
 #include <string>
 #include <tuple>
@@ -23,7 +22,7 @@
 
 #include <vk_descriptors.h>
 
-struct MaterialInstance;
+struct PbrData;
 struct MeshData;
 
 template <class T0>
@@ -178,13 +177,13 @@ struct MeshBuffers {
     int indexCount;
     AllocatedBuffer vertexBuffer;
     int vertexCount;
-    VkDeviceAddress vertexBufferAddress;
 };
 
 struct SSBOAddresses {
     VkDeviceAddress vertexBuffer;
     VkDeviceAddress instanceBuffer;
     VkDeviceAddress sceneBuffer;
+    VkDeviceAddress materialsBuffer;
 };
 
 struct SceneData {
@@ -204,7 +203,7 @@ struct InstanceData {
 
 struct IndirectBatch {
     MeshData* mesh;
-    MaterialInstance* material;
+    PbrData* material;
     VkDrawIndexedIndirectCommand indirectCommand;
 };
 

@@ -14,36 +14,23 @@ struct Bounds {
 struct Primitive {
     uint32_t startIndex;
     uint32_t count;
-    std::shared_ptr<GLTFMaterial> material;
+    std::shared_ptr<PbrMaterial> material;
     Bounds bounds;
-};
-
-// Base class for a renderable dynamic object
-class IRenderable {
-    virtual void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
 };
 
 // Implementation of a drawable scene node.
 // The scene node can hold children and will also keep a transform to propagate to them (ie all children nodes also get transformed).
-struct Node : public IRenderable {
+struct Node {
     // Parent pointer must be a weak pointer to avoid circular dependencies
     std::weak_ptr<Node> parent;
     std::vector<std::shared_ptr<Node>> children;
 
-    glm::mat4 localTransform;
-    glm::mat4 worldTransform;
+    glm::mat4 localTransform; // Original file data
+    glm::mat4 worldTransform; // Modified transform to whole model
 
-    void refreshTransform(const glm::mat4& parentMatrix)
-    {
-        worldTransform = parentMatrix * localTransform;
-        for (const auto& c : children)
-            c->refreshTransform(worldTransform);
-    }
-    virtual void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
-    {
-        for (const auto& c : children)
-            c->ToRenderObject(topMatrix, ctx);
-    }
+    void refreshTransform(const glm::mat4& parentMatrix);
+
+    virtual ~Node() = default;
 };
 
 struct MeshData {
@@ -52,8 +39,6 @@ struct MeshData {
     MeshBuffers meshBuffers;
 };
 
-struct MeshNode : public Node {
+struct MeshNode : Node {
     std::shared_ptr<MeshData> mesh;
-
-    void ToRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };
