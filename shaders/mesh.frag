@@ -18,7 +18,7 @@ void main()
 {
 	float lightValue = max(dot(inNormal, inSunlightDirection.xyz), 0.1f);
 
-	vec3 color = inColor * texture(colorTex,inUV).xyz;
+	vec3 color = inColor.xyz;
 	vec3 ambient = color *  inAmbientColor.xyz;
 
 	outFragColor = vec4(color * lightValue *  inSunlightColor.w + ambient ,1.0f);

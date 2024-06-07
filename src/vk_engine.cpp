@@ -20,6 +20,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <ranges>
 #include <thread>
 
 #ifdef NDEBUG
@@ -148,6 +149,8 @@ void VulkanEngine::init_vulkan()
     features12.drawIndirectCount = true;
     features12.descriptorBindingPartiallyBound = true;
     features12.runtimeDescriptorArray = true;
+    features12.descriptorBindingSampledImageUpdateAfterBind = true;
+    features12.descriptorBindingVariableDescriptorCount = true;
     VkPhysicalDeviceFeatures features {};
     features.multiDrawIndirect = true;
 
@@ -282,7 +285,8 @@ void VulkanEngine::init_descriptors()
 {
     // Create a descriptor pool that will hold 10 sets with 1 image each
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10000 },
     };
     _globalDescriptorAllocator.init(_device, 10, sizes);
 
@@ -292,18 +296,28 @@ void VulkanEngine::init_descriptors()
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
         _drawImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
     }
+    // Allocate a descriptor set for our draw image
+    _drawImageDescriptors = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
+    DescriptorWriter writer;
+    writer.write_image(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    writer.update_set(_device, _drawImageDescriptors);
+
+    // Create descriptor set layout for texture array
+    int materialTexturesArraySize = 1000;
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialTexturesArraySize);
+        materialTexturesArraySetLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT, true);
+    }
+    // Allocate a descriptor set for texture array
+    materialTexturesArrayDescriptorSet = _globalDescriptorAllocator.allocate(_device, materialTexturesArraySetLayout, true, materialTexturesArraySize);
+
     // Create descriptor set layout for the magenta-black texture
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         _stockImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
-
-    // Allocate a descriptor set for our draw image
-    _drawImageDescriptors = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
-    DescriptorWriter writer;
-    writer.write_image(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    writer.update_set(_device, _drawImageDescriptors);
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         // create a descriptor pool
@@ -444,7 +458,7 @@ VkPipelineCacheCreateInfo VulkanEngine::read_pipeline_cache(const std::string& f
     if (pipelineCacheSize == -1) {
         throw std::runtime_error(fmt::format("Failed to determine {} size.", filename));
     }
-	pipelineCacheData.resize(pipelineCacheSize);
+    pipelineCacheData.resize(pipelineCacheSize);
 
     pipelineCacheFile.seekg(0);
     if (!pipelineCacheFile.read(pipelineCacheData.data(), pipelineCacheSize)) {
@@ -462,7 +476,7 @@ void VulkanEngine::write_pipeline_cache(const std::string& filename)
     vkGetPipelineCacheData(_device, pipelineCache, &dataSize, nullptr); // Get size first
     vkGetPipelineCacheData(_device, pipelineCache, &dataSize, pipelineCacheData.data()); // Then read the size of data
 
-	std::ofstream file(filename, std::ios::binary | std::ios::trunc);
+    std::ofstream file(filename, std::ios::binary | std::ios::trunc);
     if (file.is_open()) {
         file.write(pipelineCacheData.data(), static_cast<long long>(pipelineCacheData.size()));
         file.close();
@@ -474,7 +488,7 @@ void VulkanEngine::write_pipeline_cache(const std::string& filename)
 
 MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode)
 {
-    std::size_t optionsHash = (std::hash<bool> {}(doubleSided)) ^ ((std::hash<fastgltf::AlphaMode>{}(alphaMode)) << 1);
+    std::size_t optionsHash = (std::hash<bool> {}(doubleSided)) ^ ((std::hash<fastgltf::AlphaMode> {}(alphaMode)) << 1);
 
     if (pipelinesCreated.contains(optionsHash)) {
         return pipelinesCreated[optionsHash];
@@ -492,16 +506,10 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     ssboAddressesRange.size = sizeof(SSBOAddresses);
     ssboAddressesRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    DescriptorLayoutBuilder layoutBuilder;
-    layoutBuilder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    layoutBuilder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    layoutBuilder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    VkDescriptorSetLayout setLayout = layoutBuilder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-
-    VkDescriptorSetLayout layouts[] = { setLayout };
+    std::vector<VkDescriptorSetLayout> layouts = { materialTexturesArraySetLayout };
     VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
-    mesh_layout_info.setLayoutCount = 1;
-    mesh_layout_info.pSetLayouts = layouts;
+    mesh_layout_info.pSetLayouts = layouts.data();
+    mesh_layout_info.setLayoutCount = layouts.size();
     mesh_layout_info.pPushConstantRanges = &ssboAddressesRange;
     mesh_layout_info.pushConstantRangeCount = 1;
 
@@ -722,8 +730,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     vkCmdBindIndexBuffer(cmd, indirectIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     for (const auto& indirectBatch : indirectBatches) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline->layout, 0, 1, &indirectBatch.first->materialSet, 0, nullptr);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline.pipeline); // TODO Check for same pipeline in previous loop
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline.layout, 0, 1, &materialTexturesArrayDescriptorSet, 0, nullptr);
 
         // Set dynamic viewport
         VkViewport viewport = {};
@@ -734,7 +742,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         viewport.minDepth = 0.f;
         viewport.maxDepth = 1.f;
         vkCmdSetViewport(cmd, 0, 1, &viewport);
-
         // Set dynamic scissor
         VkRect2D scissor = {};
         scissor.offset.x = 0;
@@ -743,7 +750,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         scissor.extent.height = _drawExtent.height;
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        vkCmdPushConstants(cmd, indirectBatch.first->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
+        vkCmdPushConstants(cmd, indirectBatch.first->pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
         vkCmdDrawIndexedIndirect(cmd, indirectBuffers[indirectBatch.first].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
     }
@@ -768,7 +775,7 @@ void VulkanEngine::create_indirect_commands()
             for (const auto& primitive : mesh->primitives) {
                 indirectCmd.indexCount = primitive.count;
                 indirectCmd.firstIndex = primitive.startIndex;
-                indirectBatches[&primitive.material->data].push_back(indirectCmd);
+                indirectBatches[primitive.material.get()].push_back(indirectCmd);
             }
         }
     }
@@ -881,32 +888,51 @@ void VulkanEngine::create_material_buffer()
 {
     int totalMaterialsSize = 0;
     for (const auto& model : loadedModels | std::views::values) {
-        totalMaterialsSize += model->materials.size() * sizeof(PbrData);
+        totalMaterialsSize += model->materials.size() * sizeof(MaterialConstants);
     }
 
     materialConstantsBuffer = create_buffer(totalMaterialsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-	const AllocatedBuffer staging = create_buffer(sizeof(PbrData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    const AllocatedBuffer staging = create_buffer(sizeof(MaterialConstants), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     void* data = staging.allocation->GetMappedData();
 
-    int currentMaterialOffset;
+    int currentMaterialOffset = 0;
     int currentMaterialIndex = 0;
-	for (const auto& model : loadedModels | std::views::values) {
+    for (const auto& model : loadedModels | std::views::values) {
         for (const auto& material : model->materials | std::views::values) {
-        	memcpy(data, &material->data, sizeof(PbrData));
-        	immediate_submit([&](const VkCommandBuffer cmd) {
-                VkBufferCopy vertexCopy {};
-                vertexCopy.dstOffset = currentMaterialOffset;
-                vertexCopy.srcOffset = 0;
-                vertexCopy.size = sizeof(PbrData);
-                vkCmdCopyBuffer(cmd, staging.buffer, materialConstantsBuffer.buffer, 1, &vertexCopy);
+            memcpy(data, &material->data, sizeof(MaterialConstants));
+            immediate_submit([&](const VkCommandBuffer cmd) {
+                VkBufferCopy materialCopy {};
+                materialCopy.dstOffset = currentMaterialOffset;
+                materialCopy.srcOffset = 0;
+                materialCopy.size = sizeof(MaterialConstants);
+                vkCmdCopyBuffer(cmd, staging.buffer, materialConstantsBuffer.buffer, 1, &materialCopy);
             });
-            currentMaterialOffset += sizeof(PbrData);
+            currentMaterialOffset += sizeof(MaterialConstants);
 
             material->index = currentMaterialIndex;
             currentMaterialIndex++;
         }
     }
+}
+
+void VulkanEngine::create_material_texture_array()
+{
+    DescriptorWriter writer;
+    int materialIndex = 0;
+
+    for (const auto& model : loadedModels | std::views::values) {
+        for (const auto& material : model->materials | std::views::values) {
+            writer.write_image_array(0, material->data.resources.base.image.imageView, material->data.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex);
+            writer.write_image_array(0, material->data.resources.emissive.image.imageView, material->data.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 1);
+            writer.write_image_array(0, material->data.resources.metallicRoughness.image.imageView, material->data.resources.metallicRoughness.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 2);
+            writer.write_image_array(0, material->data.resources.normal.image.imageView, material->data.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 3);
+            writer.write_image_array(0, material->data.resources.occlusion.image.imageView, material->data.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 4);
+            materialIndex += 5;
+        }
+    }
+
+    writer.update_set(_device, materialTexturesArrayDescriptorSet);
 }
 
 void VulkanEngine::update_scene()
@@ -919,6 +945,7 @@ void VulkanEngine::update_scene()
     create_instanced_data();
     create_vertex_index_buffers();
     create_material_buffer();
+    create_material_texture_array();
 
     sceneData.ambientColor = glm::vec4(.1f);
     sceneData.sunlightColor = glm::vec4(1.f);

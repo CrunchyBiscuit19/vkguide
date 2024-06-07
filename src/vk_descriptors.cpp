@@ -1,12 +1,12 @@
 ﻿#include <vk_descriptors.h>
 #include "vk_types.h"
 
-void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType type, uint32_t count, VkDescriptorBindingFlags flags)
+void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType type, uint32_t count)
 {
     VkDescriptorSetLayoutBinding newbind {};
     newbind.binding = binding;
-    newbind.descriptorCount = count;
     newbind.descriptorType = type;
+    newbind.descriptorCount = count;
 
     bindings.push_back(newbind);
 }
@@ -16,65 +16,32 @@ void DescriptorLayoutBuilder::clear()
     bindings.clear();
 }
 
-VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device, VkShaderStageFlags shaderStages, VkDescriptorSetLayoutCreateFlags flags)
+VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device, VkShaderStageFlags shaderStages, bool useBindless)
 {
     for (auto& b : bindings) {
         b.stageFlags |= shaderStages;
     }
 
-    VkDescriptorSetLayoutCreateInfo info = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    VkDescriptorSetLayoutCreateInfo info { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     info.pNext = nullptr;
     info.pBindings = bindings.data();
     info.bindingCount = static_cast<uint32_t>(bindings.size());
     info.flags = 0;
 
-    VkDescriptorSetLayout set;
-    VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &set));
-
-	return set;
-}
-
-/* void DescriptorAllocator::init_pool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
-{
-    std::vector<VkDescriptorPoolSize> poolSizes;
-    for (const PoolSizeRatio ratio : poolRatios) {
-        poolSizes.push_back(VkDescriptorPoolSize {
-            .type = ratio.type,
-            .descriptorCount = static_cast<uint32_t>(static_cast<float>(maxSets) * ratio.ratio) });
+    VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    if (useBindless) {
+        info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+        VkDescriptorSetLayoutBindingFlagsCreateInfoEXT extended_info { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT, nullptr };
+        extended_info.bindingCount = static_cast<uint32_t>(bindings.size());
+        extended_info.pBindingFlags = &bindlessFlags;
+        info.pNext = &extended_info;
     }
 
-    VkDescriptorPoolCreateInfo pool_info = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-    pool_info.flags = 0;
-    pool_info.maxSets = maxSets;
-    pool_info.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    pool_info.pPoolSizes = poolSizes.data();
+    VkDescriptorSetLayout setLayout;
+    VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &setLayout));
 
-    vkCreateDescriptorPool(device, &pool_info, nullptr, &pool);
+	return setLayout;
 }
-
-void DescriptorAllocator::clear_descriptors(VkDevice device) const
-{
-    vkResetDescriptorPool(device, pool, 0);
-}
-
-void DescriptorAllocator::destroy_pool(VkDevice device) const
-{
-    vkDestroyDescriptorPool(device, pool, nullptr);
-}
-
-VkDescriptorSet DescriptorAllocator::allocate(VkDevice device, VkDescriptorSetLayout layout) const
-{
-    VkDescriptorSetAllocateInfo allocInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-    allocInfo.pNext = nullptr;
-    allocInfo.descriptorPool = pool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &layout;
-
-    VkDescriptorSet ds;
-    VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &ds));
-
-    return ds;
-} */
 
 void DescriptorAllocatorGrowable::init(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
 {
@@ -113,17 +80,24 @@ void DescriptorAllocatorGrowable::destroy_pools(VkDevice device)
     fullPools.clear();
 }
 
-VkDescriptorSet DescriptorAllocatorGrowable::allocate(VkDevice device, VkDescriptorSetLayout layout)
+VkDescriptorSet DescriptorAllocatorGrowable::allocate(VkDevice device, VkDescriptorSetLayout layout, bool useBindless, uint32_t maxBindings)
 {
     // Get or create a pool to allocate from
     VkDescriptorPool poolToUse = get_pool(device);
 
-    VkDescriptorSetAllocateInfo allocInfo = {};
+    VkDescriptorSetAllocateInfo allocInfo {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     allocInfo.pNext = nullptr;
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = poolToUse;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &layout;
+
+    if (useBindless) {
+	    VkDescriptorSetVariableDescriptorCountAllocateInfoEXT countInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
+	    uint32_t maxBinding = maxBindings - 1;
+	    countInfo.descriptorSetCount = 1;
+	    countInfo.pDescriptorCounts = &maxBinding;
+	    allocInfo.pNext = &countInfo;
+    }
 
     VkDescriptorSet ds;
     const VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &ds);
@@ -180,6 +154,42 @@ VkDescriptorPool DescriptorAllocatorGrowable::create_pool(VkDevice device, uint3
     return newPool;
 }
 
+void DescriptorWriter::write_image(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type)
+{
+    const VkDescriptorImageInfo& info = imageInfos.emplace_back(VkDescriptorImageInfo {
+        .sampler = sampler,
+        .imageView = image,
+        .imageLayout = layout });
+
+    VkWriteDescriptorSet write = { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    write.descriptorCount = 1;
+    // write.dstArrayElement = ;
+    write.descriptorType = type;
+    write.dstSet = VK_NULL_HANDLE; // left empty for now until we need to write it
+    write.dstBinding = binding;
+    write.pImageInfo = &info;
+
+    writes.push_back(write);
+}
+
+void DescriptorWriter::write_image_array(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type, uint32_t arrayIndex)
+{
+    const VkDescriptorImageInfo& info = imageInfos.emplace_back(VkDescriptorImageInfo {
+        .sampler = sampler,
+        .imageView = image,
+        .imageLayout = layout });
+
+    VkWriteDescriptorSet write = { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    write.descriptorCount = 1;
+    write.dstArrayElement = arrayIndex;
+    write.descriptorType = type;
+    write.dstSet = VK_NULL_HANDLE;
+    write.dstBinding = binding;
+    write.pImageInfo = &info;
+
+    writes.push_back(write);
+}
+
 void DescriptorWriter::write_buffer(int binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type)
 {
     const VkDescriptorBufferInfo& info = bufferInfos.emplace_back(VkDescriptorBufferInfo {
@@ -193,23 +203,6 @@ void DescriptorWriter::write_buffer(int binding, VkBuffer buffer, size_t size, s
     write.descriptorCount = 1;
     write.descriptorType = type;
     write.pBufferInfo = &info;
-
-    writes.push_back(write);
-}
-
-void DescriptorWriter::write_image(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type)
-{
-    const VkDescriptorImageInfo& info = imageInfos.emplace_back(VkDescriptorImageInfo {
-        .sampler = sampler,
-        .imageView = image,
-        .imageLayout = layout });
-
-    VkWriteDescriptorSet write = { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-    write.dstBinding = binding;
-    write.dstSet = VK_NULL_HANDLE; // left empty for now until we need to write it
-    write.descriptorCount = 1;
-    write.descriptorType = type;
-    write.pImageInfo = &info;
 
     writes.push_back(write);
 }

@@ -7,26 +7,10 @@ struct DescriptorLayoutBuilder {
 
     std::vector<VkDescriptorSetLayoutBinding> bindings;
 
-    void add_binding(uint32_t binding, VkDescriptorType type, uint32_t count = 1, VkDescriptorBindingFlags flags = 0);
+    void add_binding(uint32_t binding, VkDescriptorType type, uint32_t count = 1);
     void clear();
-    VkDescriptorSetLayout build(VkDevice device, VkShaderStageFlags shaderStages);
+    VkDescriptorSetLayout build(VkDevice device, VkShaderStageFlags shaderStages, bool useBindless = false);
 };
-
-/* struct DescriptorAllocator {
-
-    struct PoolSizeRatio {
-        VkDescriptorType type;
-        float ratio;
-    };
-
-    VkDescriptorPool pool;
-
-    void init_pool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
-    void clear_descriptors(VkDevice device) const;
-    void destroy_pool(VkDevice device) const;
-
-    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
-}; */
 
 struct DescriptorAllocatorGrowable {
 public:
@@ -39,7 +23,7 @@ public:
     void clear_pools(VkDevice device);
     void destroy_pools(VkDevice device);
 
-    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout);
+    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout, bool useBindless = false, uint32_t maxBindings = 1);
 
 private:
     VkDescriptorPool get_pool(VkDevice device);
@@ -57,6 +41,7 @@ struct DescriptorWriter {
     std::vector<VkWriteDescriptorSet> writes;
 
     void write_image(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
+    void write_image_array(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type, uint32_t arrayIndex);
     void write_buffer(int binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
 
     void clear();

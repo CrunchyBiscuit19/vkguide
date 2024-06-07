@@ -109,8 +109,9 @@ public:
     // Draw indirect-related
     AllocatedBuffer indirectVertexBuffer;
     AllocatedBuffer indirectIndexBuffer;
-    std::unordered_map<PbrData*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
-    std::unordered_map<PbrData*, AllocatedBuffer> indirectBuffers;
+    // For each material, add to it the associated primitives
+    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
+    std::unordered_map<PbrMaterial*, AllocatedBuffer> indirectBuffers;
     AllocatedBuffer instanceBuffer;
 
     // Scene data
@@ -120,6 +121,8 @@ public:
     // Models and materials
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedModels;
     AllocatedBuffer materialConstantsBuffer;
+    VkDescriptorSetLayout materialTexturesArraySetLayout;
+    VkDescriptorSet materialTexturesArrayDescriptorSet;
 
     // Samplers
     VkSampler _defaultSamplerLinear;
@@ -193,6 +196,7 @@ public:
     void create_vertex_index_buffers();
     void create_scene_buffer();
     void create_material_buffer();
+    void create_material_texture_array();
     void update_scene();
 
     void cleanup_immediate();

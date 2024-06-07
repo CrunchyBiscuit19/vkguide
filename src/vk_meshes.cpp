@@ -1,7 +1,7 @@
 #include <vk_meshes.h>
 #include "vk_engine.h"
 
-inline void Node::refreshTransform(const glm::mat4& parentMatrix)
+void Node::refreshTransform(const glm::mat4& parentMatrix)
 {
     worldTransform = parentMatrix * localTransform;
     for (const auto& c : children)

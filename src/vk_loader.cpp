@@ -127,6 +127,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         newMat->data.resources.base.sampler = engine->_defaultSamplerLinear;
         newMat->data.resources.metallicRoughness.image = engine->_stockImages["white"];
         newMat->data.resources.metallicRoughness.sampler = engine->_defaultSamplerLinear;
+        newMat->data.resources.normal.image = engine->_stockImages["white"];
+        newMat->data.resources.normal.sampler = engine->_defaultSamplerLinear;
+        newMat->data.resources.occlusion.image = engine->_stockImages["white"];
+        newMat->data.resources.occlusion.sampler = engine->_defaultSamplerLinear;
+        newMat->data.resources.emissive.image = engine->_stockImages["white"];
+        newMat->data.resources.emissive.sampler = engine->_defaultSamplerLinear;
 
         // Grab textures from gltf file
         if (mat.pbrData.baseColorTexture.has_value()) {

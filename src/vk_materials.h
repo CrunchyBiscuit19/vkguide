@@ -15,6 +15,7 @@ struct MaterialConstants {
     glm::vec4 emissiveFactor;
     float metallicFactor;
     float roughnessFactor;
+    glm::vec2 padding;
 };
 
 struct MaterialResources {
@@ -39,9 +40,9 @@ struct MaterialPipeline {
 
 class PbrMaterial {
     VulkanEngine* engine;
-    MaterialPipeline pipeline;
 
 public:
+    MaterialPipeline pipeline;
     PbrData data;
     int index;
 

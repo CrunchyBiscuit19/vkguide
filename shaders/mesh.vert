@@ -34,6 +34,13 @@ struct SceneData {
 	vec4 sunlightDirection; // w for sun power
 	vec4 sunlightColor;
 };
+struct Material {
+    vec4 baseFactor;
+    vec4 emissiveFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    vec2 padding;
+};
 
 layout(buffer_reference, std430) readonly buffer VertexBuffer{ 
 	Vertex vertices[];
@@ -44,6 +51,9 @@ layout(buffer_reference, std430) readonly buffer InstanceBuffer{
 layout(buffer_reference, std430) readonly buffer SceneBuffer{ 
 	SceneData sceneData;
 };
+layout(buffer_reference, std430) readonly buffer MaterialBuffer{ 
+	Material materials[];
+};
 
 // Push constants block
 layout( push_constant, std430 ) uniform PushConstants
@@ -51,6 +61,7 @@ layout( push_constant, std430 ) uniform PushConstants
 	VertexBuffer vertexBuffer;
 	InstanceBuffer instanceBuffer;
 	SceneBuffer sceneBuffer;
+	MaterialBuffer materialBuffer;
 } constants;
 
 void main() 
@@ -62,7 +73,7 @@ void main()
 	gl_Position =  constants.sceneBuffer.sceneData.viewproj * renderMatrix * position; // pvm matrices
 
 	outNormal = mat3(transpose(inverse(renderMatrix))) * v.normal;
-	outColor = v.color.xyz * materialData.colorFactors.xyz;	
+	outColor = v.color.xyz * constants.materialBuffer.materials[0].baseFactor.xyz;	
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
 
