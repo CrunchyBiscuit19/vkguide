@@ -186,8 +186,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
             Primitive newSurface;
-            newSurface.startIndex = static_cast<uint32_t>(indices.size());
-            newSurface.count = static_cast<uint32_t>(gltf.accessors[p.indicesAccessor.value()].count);
+            newSurface.firstIndex = static_cast<uint32_t>(indices.size());
+            newSurface.indexCount = static_cast<uint32_t>(gltf.accessors[p.indicesAccessor.value()].count);
 
             size_t initialVerticesSize = vertices.size();
             // Load indexes
@@ -207,6 +207,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                 // Add the vertices of current primitive to the previous ones
                 fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
                 vertices.resize(vertices.size() + posAccessor.count);
+                newSurface.vertexCount = posAccessor.count;
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor, // Default all the params
                     [&](glm::vec3 v, size_t index) {
                         Vertex newvtx;

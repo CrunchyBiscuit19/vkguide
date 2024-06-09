@@ -12,8 +12,9 @@ struct Bounds {
 };
 
 struct Primitive {
-    uint32_t startIndex;
-    uint32_t count;
+    uint32_t firstIndex;
+    uint32_t indexCount;
+    uint32_t vertexCount;
     std::shared_ptr<PbrMaterial> material;
     Bounds bounds;
 };

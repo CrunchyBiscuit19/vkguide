@@ -768,17 +768,24 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 void VulkanEngine::create_indirect_commands()
 {
     // Batch one vector of indirect draw commands per material
+    int totalPrimitives = 0;
     for (const auto& model : loadedModels | std::views::values) {
+        int totalVertex = 0;
+
         VkDrawIndexedIndirectCommand indirectCmd {};
         indirectCmd.instanceCount = objectCount;
-        indirectCmd.firstInstance = 0;
-        indirectCmd.vertexOffset = 0;
+        indirectCmd.firstInstance = totalPrimitives * objectCount;
 
         for (const auto& mesh : model->meshes | std::views::values) {
             for (const auto& primitive : mesh->primitives) {
-                indirectCmd.indexCount = primitive.count;
-                indirectCmd.firstIndex = primitive.startIndex;
+                indirectCmd.vertexOffset = 0;
+                indirectCmd.indexCount = primitive.indexCount;
+                indirectCmd.firstIndex = primitive.firstIndex;
+                
                 indirectBatches[primitive.material.get()].push_back(indirectCmd);
+
+                totalVertex += primitive.vertexCount;
+                totalPrimitives++;
             }
         }
     }
