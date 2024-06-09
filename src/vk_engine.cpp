@@ -553,7 +553,7 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     return materialPipeline;
 }
 
-AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
+AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, BufferDeletionQueue& bufferDeletionQueue)
 {
     VkBufferCreateInfo bufferInfo = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     bufferInfo.pNext = nullptr;
@@ -568,14 +568,14 @@ AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags
     VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation,
         &newBuffer.info));
 
-    destroy_buffer(newBuffer);
+    destroy_buffer(newBuffer, bufferDeletionQueue);
 
     return newBuffer;
 }
 
-void VulkanEngine::destroy_buffer(const AllocatedBuffer& buffer)
+void VulkanEngine::destroy_buffer(const AllocatedBuffer& buffer, BufferDeletionQueue& bufferDeletionQueue)
 {
-    _genericBufferDeletionQueue.buffers.push_resource(_device, buffer.buffer, nullptr, _allocator, buffer.allocation);
+    bufferDeletionQueue.buffers.push_resource(_device, buffer.buffer, nullptr, _allocator, buffer.allocation);
 }
 
 AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
@@ -609,7 +609,7 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkIm
 AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
     const size_t dataSize = size.depth * size.width * size.height * 4;
-    const AllocatedBuffer uploadBuffer = create_buffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU); // Staging buffer
+    const AllocatedBuffer uploadBuffer = create_buffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, _tempBufferDeletionQueue); // Staging buffer
     memcpy(uploadBuffer.info.pMappedData, data, dataSize);
 
     // Image to hold data loaded from file
@@ -647,6 +647,8 @@ AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkF
                 VK_ACCESS_2_MEMORY_READ_BIT,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     });
+    
+    _tempBufferDeletionQueue.buffers.flush();
 
     return newImage;
 }
@@ -669,10 +671,10 @@ MeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Ver
     newSurface.vertexCount = vertices.size();
     newSurface.indexCount = indices.size();
 
-    newSurface.vertexBuffer = create_buffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-    newSurface.indexBuffer = create_buffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    newSurface.vertexBuffer = create_buffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _genericBufferDeletionQueue);
+    newSurface.indexBuffer = create_buffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _genericBufferDeletionQueue);
 
-    const AllocatedBuffer stagingBuffer = create_buffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    const AllocatedBuffer stagingBuffer = create_buffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, _tempBufferDeletionQueue);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
     memcpy(stagingAddress, vertices.data(), vertexBufferSize);
     memcpy(static_cast<char*>(stagingAddress) + vertexBufferSize, indices.data(), indexBufferSize);
@@ -690,6 +692,8 @@ MeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Ver
         vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
         vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
     });
+
+    _tempBufferDeletionQueue.buffers.flush();
 
     return newSurface;
 }
@@ -795,11 +799,11 @@ void VulkanEngine::create_indirect_commands()
         const auto& indirectCommand = indirectBatch.second;
         const auto indirectCommandSize = indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-        const AllocatedBuffer stagingBuffer = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        const AllocatedBuffer stagingBuffer = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY, _perDrawBufferDeletionQueue);
         void* stagingAddress = stagingBuffer.allocation->GetMappedData();
         memcpy(stagingAddress, indirectCommand.data(), indirectCommandSize);
 
-        indirectBuffers[indirectBatch.first] = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        indirectBuffers[indirectBatch.first] = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _perDrawBufferDeletionQueue);
         VkBufferCopy indirectCopy {};
         indirectCopy.dstOffset = 0;
         indirectCopy.srcOffset = 0;
@@ -825,11 +829,11 @@ void VulkanEngine::create_instanced_data()
 
     const auto instanceDataSize = instanceData.size() * sizeof(InstanceData);
 
-    const AllocatedBuffer stagingBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    const AllocatedBuffer stagingBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY, _perDrawBufferDeletionQueue);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
     memcpy(stagingAddress, instanceData.data(), instanceDataSize);
 
-    instanceBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    instanceBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _perDrawBufferDeletionQueue);
     VkBufferCopy instanceCopy {};
     instanceCopy.dstOffset = 0;
     instanceCopy.srcOffset = 0;
@@ -851,8 +855,8 @@ void VulkanEngine::create_vertex_index_buffers()
         }
     }
 
-    indirectVertexBuffer = create_buffer(totalVertexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-    indirectIndexBuffer = create_buffer(totalIndexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    indirectVertexBuffer = create_buffer(totalVertexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _perDrawBufferDeletionQueue);
+    indirectIndexBuffer = create_buffer(totalIndexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _perDrawBufferDeletionQueue);
 
     int currentVertexOffset = 0;
     int currentIndexOffset = 0;
@@ -889,9 +893,9 @@ void VulkanEngine::create_scene_buffer()
     sceneData.proj[1][1] *= -1;
     sceneData.viewproj = sceneData.proj * sceneData.view;
 
-    sceneBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    sceneBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _perDrawBufferDeletionQueue);
 
-    const AllocatedBuffer stagingBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    const AllocatedBuffer stagingBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, _perDrawBufferDeletionQueue);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
     memcpy(stagingAddress, &sceneData, sizeof(SceneData));
 
@@ -908,9 +912,9 @@ void VulkanEngine::create_scene_buffer()
 void VulkanEngine::create_material_buffer(PbrMaterial& material)
 {
     int materialConstantsSize = sizeof(MaterialConstants);
-    materialConstantsBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    materialConstantsBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _perDrawBufferDeletionQueue);
 
-    const AllocatedBuffer stagingBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    const AllocatedBuffer stagingBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY, _perDrawBufferDeletionQueue);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
     memcpy(stagingAddress, &material.data.constants, materialConstantsSize);
 
@@ -944,6 +948,7 @@ void VulkanEngine::update_scene()
 
     indirectBatches.clear();
     indirectBuffers.clear();
+    _perDrawBufferDeletionQueue.buffers.flush();
 
     create_indirect_commands();
     create_instanced_data();

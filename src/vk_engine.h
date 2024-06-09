@@ -153,7 +153,7 @@ public:
 
     struct BufferDeletionQueue {
         DeletionQueue<VkBuffer> buffers;
-    } _genericBufferDeletionQueue;
+    } _genericBufferDeletionQueue, _perDrawBufferDeletionQueue, _tempBufferDeletionQueue;
 
     struct DescriptorDeletionQueue {
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
@@ -185,8 +185,8 @@ public:
     void write_pipeline_cache(const std::string& filename);
     MaterialPipeline create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode);
 
-    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-    void destroy_buffer(const AllocatedBuffer& buffer);
+    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, BufferDeletionQueue& bufferDeletionQueue);
+    void destroy_buffer(const AllocatedBuffer& buffer, BufferDeletionQueue& bufferDeletionQueue);
 
     AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
