@@ -44,7 +44,6 @@ class PbrMaterial {
 public:
     MaterialPipeline pipeline;
     PbrData data;
-    int index;
 
     PbrMaterial(VulkanEngine* engine);
 

@@ -721,15 +721,19 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     pushConstants.instanceBuffer = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
     deviceAddressInfo.buffer = sceneBuffer.buffer;
     pushConstants.sceneBuffer = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
-    deviceAddressInfo.buffer = materialConstantsBuffer.buffer;
-    pushConstants.materialsBuffer = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
 
     // Index buffer of all models in the scene
     vkCmdBindIndexBuffer(cmd, indirectIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     for (const auto& indirectBatch : indirectBatches) {
+        create_material_buffer(*indirectBatch.first);
+        create_material_texture_array(*indirectBatch.first);
+        deviceAddressInfo.buffer = materialConstantsBuffer.buffer;
+        pushConstants.materialsBuffer = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline.pipeline); // TODO Check for same pipeline in previous loop
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline.layout, 0, 1, &materialTexturesArrayDescriptorSet, 0, nullptr);
+        vkCmdPushConstants(cmd, indirectBatch.first->pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
         // Set dynamic viewport
         VkViewport viewport = {};
@@ -747,8 +751,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         scissor.extent.width = _drawExtent.width;
         scissor.extent.height = _drawExtent.height;
         vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-        vkCmdPushConstants(cmd, indirectBatch.first->pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
         vkCmdDrawIndexedIndirect(cmd, indirectBuffers[indirectBatch.first].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
     }
@@ -883,62 +885,45 @@ void VulkanEngine::create_scene_buffer()
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
     memcpy(stagingAddress, &sceneData, sizeof(SceneData));
 
+    VkBufferCopy sceneCopy {};
+    sceneCopy.dstOffset = 0;
+    sceneCopy.srcOffset = 0;
+    sceneCopy.size = sizeof(SceneData);
+
     immediate_submit([&](const VkCommandBuffer cmd) {
-        VkBufferCopy sceneCopy {};
-        sceneCopy.dstOffset = 0;
-        sceneCopy.srcOffset = 0;
-        sceneCopy.size = sizeof(SceneData);
         vkCmdCopyBuffer(cmd, stagingBuffer.buffer, sceneBuffer.buffer, 1, &sceneCopy);
     });
 }
 
-void VulkanEngine::create_material_buffer()
+void VulkanEngine::create_material_buffer(PbrMaterial& material)
 {
-    int totalMaterialsSize = 0;
-    for (const auto& model : loadedModels | std::views::values) {
-        totalMaterialsSize += model->materials.size() * sizeof(MaterialConstants);
-    }
+    int materialConstantsSize = sizeof(MaterialConstants);
+    materialConstantsBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    materialConstantsBuffer = create_buffer(totalMaterialsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-
-    const AllocatedBuffer stagingBuffer = create_buffer(sizeof(MaterialConstants), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    const AllocatedBuffer stagingBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+    memcpy(stagingAddress, &material.data.constants, materialConstantsSize);
 
-    int currentMaterialOffset = 0;
-    int currentMaterialIndex = 0;
-    for (const auto& model : loadedModels | std::views::values) {
-        for (const auto& material : model->materials | std::views::values) {
-            memcpy(stagingAddress, &material->data.constants, sizeof(MaterialConstants));
-            immediate_submit([&](const VkCommandBuffer cmd) {
-                VkBufferCopy materialCopy {};
-                materialCopy.dstOffset = currentMaterialOffset;
-                materialCopy.srcOffset = 0;
-                materialCopy.size = sizeof(MaterialConstants);
-                vkCmdCopyBuffer(cmd, stagingBuffer.buffer, materialConstantsBuffer.buffer, 1, &materialCopy);
-            });
-            currentMaterialOffset += sizeof(MaterialConstants);
+    VkBufferCopy materialCopy {};
+    materialCopy.dstOffset = 0;
+    materialCopy.srcOffset = 0;
+    materialCopy.size = sizeof(MaterialConstants);
 
-            material->index = currentMaterialIndex;
-            currentMaterialIndex++;
-        }
-    }
+    immediate_submit([&](const VkCommandBuffer cmd) {
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, materialConstantsBuffer.buffer, 1, &materialCopy);
+    });
 }
 
-void VulkanEngine::create_material_texture_array()
+void VulkanEngine::create_material_texture_array(PbrMaterial& material)
 {
     DescriptorWriter writer;
     int materialIndex = 0;
 
-    for (const auto& model : loadedModels | std::views::values) {
-        for (const auto& material : model->materials | std::views::values) {
-            writer.write_image_array(0, material->data.resources.base.image.imageView, material->data.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex);
-            writer.write_image_array(0, material->data.resources.emissive.image.imageView, material->data.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 1);
-            writer.write_image_array(0, material->data.resources.metallicRoughness.image.imageView, material->data.resources.metallicRoughness.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 2);
-            writer.write_image_array(0, material->data.resources.normal.image.imageView, material->data.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 3);
-            writer.write_image_array(0, material->data.resources.occlusion.image.imageView, material->data.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 4);
-            materialIndex += 5;
-        }
-    }
+    writer.write_image_array(0, material.data.resources.base.image.imageView, material.data.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex);
+    writer.write_image_array(0, material.data.resources.emissive.image.imageView, material.data.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 1);
+    writer.write_image_array(0, material.data.resources.metallicRoughness.image.imageView, material.data.resources.metallicRoughness.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 2);
+    writer.write_image_array(0, material.data.resources.normal.image.imageView, material.data.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 3);
+    writer.write_image_array(0, material.data.resources.occlusion.image.imageView, material.data.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 4);
 
     writer.update_set(_device, materialTexturesArrayDescriptorSet);
 }
@@ -953,8 +938,6 @@ void VulkanEngine::update_scene()
     create_indirect_commands();
     create_instanced_data();
     create_vertex_index_buffers();
-    create_material_buffer();
-    create_material_texture_array();
     create_scene_buffer();
 
     const auto end = std::chrono::system_clock::now();

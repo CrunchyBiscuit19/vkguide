@@ -153,6 +153,7 @@ public:
     struct DescriptorDeletionQueue {
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
     } _descriptorDeletionQueue;
+
     struct ImageDeletionQueue {
         DeletionQueue<VkImage> images;
         DeletionQueue<VkImageView> imageViews;
@@ -195,8 +196,8 @@ public:
     void create_instanced_data();
     void create_vertex_index_buffers();
     void create_scene_buffer();
-    void create_material_buffer();
-    void create_material_texture_array();
+    void create_material_buffer(PbrMaterial& material);
+    void create_material_texture_array(PbrMaterial& material);
     void update_scene();
 
     void cleanup_immediate();

@@ -52,7 +52,7 @@ layout(buffer_reference, std430) readonly buffer SceneBuffer{
 	SceneData sceneData;
 };
 layout(buffer_reference, std430) readonly buffer MaterialBuffer{ 
-	Material materials[];
+	Material material;
 };
 
 // Push constants block
@@ -73,7 +73,7 @@ void main()
 	gl_Position =  constants.sceneBuffer.sceneData.viewproj * renderMatrix * position; // pvm matrices
 
 	outNormal = mat3(transpose(inverse(renderMatrix))) * v.normal;
-	outColor = v.color.xyz * constants.materialBuffer.materials[0].baseFactor.xyz;	
+	outColor = v.color.xyz * constants.materialBuffer.material.baseFactor.xyz;	
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
 
