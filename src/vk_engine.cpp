@@ -609,8 +609,10 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkIm
 AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
     const size_t dataSize = size.depth * size.width * size.height * 4;
-    const AllocatedBuffer uploadBuffer = create_buffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, _tempBufferDeletionQueue); // Staging buffer
-    memcpy(uploadBuffer.info.pMappedData, data, dataSize);
+
+    const AllocatedBuffer stagingBuffer = create_buffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, _tempBufferDeletionQueue); // Staging buffer
+    void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+    memcpy(stagingAddress, data, dataSize);
 
     // Image to hold data loaded from file
     const AllocatedImage newImage = create_image(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
@@ -634,7 +636,7 @@ AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D size, VkF
         copyRegion.imageSubresource.layerCount = 1;
         copyRegion.imageExtent = size;
 
-        vkCmdCopyBufferToImage(cmd, uploadBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
             &copyRegion);
 
         if (mipmapped)
