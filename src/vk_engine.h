@@ -14,31 +14,38 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 constexpr unsigned int ONE_SECOND_IN_MILLISECONDS = 1000;
 constexpr unsigned int EXPECTED_FRAME_RATE = 60;
 
-struct RenderObject {
-    uint32_t indexCount;
-    uint32_t firstIndex;
-    VkBuffer indexBuffer;
-
-    Bounds bounds;
-
-    MeshNode meshNode;
-    PbrData* material;
-
-    glm::mat4 transform;
-    VkDeviceAddress vertexBufferAddress;
-};
-
-struct DrawContext {
-    std::vector<RenderObject> OpaqueSurfaces;
-    std::vector<RenderObject> TransparentSurfaces;
-};
-
 struct EngineStats {
     float frametime;
     int triangle_count;
     int drawcall_count;
     float scene_update_time;
     float mesh_draw_time;
+};
+
+struct FrameData {
+    VkCommandPool _commandPool;
+    VkCommandBuffer _mainCommandBuffer;
+
+    VkSemaphore _swapchainSemaphore, _renderSemaphore;
+    VkFence _renderFence;
+
+    DescriptorAllocatorGrowable _frameDescriptors;
+
+    struct FrameDeletionQueue {
+        DeletionQueue<VkFence> fenceDeletion;
+        DeletionQueue<VkSemaphore> semaphoreDeletion;
+        DeletionQueue<VkCommandPool> commandPoolDeletion;
+        DeletionQueue<VkBuffer> bufferDeletion;
+    } _frameDeletionQueue;
+
+    void cleanup(VkDevice device)
+    {
+        _frameDeletionQueue.fenceDeletion.flush();
+        _frameDeletionQueue.semaphoreDeletion.flush();
+        _frameDeletionQueue.commandPoolDeletion.flush();
+        _frameDeletionQueue.bufferDeletion.flush();
+        _frameDescriptors.destroy_pools(device);
+    }
 };
 
 class VulkanEngine {
@@ -71,6 +78,7 @@ public:
     int _frameNumber { 0 };
     FrameData _frames[FRAME_OVERLAP];
     FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
+    FrameData& get_previous_frame() { return _frames[(_frameNumber - 1) % FRAME_OVERLAP]; }
 
     // VMA
     VmaAllocator _allocator;
@@ -152,8 +160,10 @@ public:
     } _pipelineDeletionQueue;
 
     struct BufferDeletionQueue {
-        DeletionQueue<VkBuffer> buffers;
-    } _genericBufferDeletionQueue, _perDrawBufferDeletionQueue, _tempBufferDeletionQueue;
+        DeletionQueue<VkBuffer> genericBuffers;
+        DeletionQueue<VkBuffer> perDrawBuffers;
+        DeletionQueue<VkBuffer> tempBuffers;
+    } _bufferDeletionQueue;
 
     struct DescriptorDeletionQueue {
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
@@ -185,8 +195,8 @@ public:
     void write_pipeline_cache(const std::string& filename);
     MaterialPipeline create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode);
 
-    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, BufferDeletionQueue& bufferDeletionQueue);
-    void destroy_buffer(const AllocatedBuffer& buffer, BufferDeletionQueue& bufferDeletionQueue);
+    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue);
+    void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue);
 
     AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);

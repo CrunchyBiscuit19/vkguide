@@ -139,31 +139,6 @@ struct AllocatedBuffer {
     VmaAllocationInfo info;
 };
 
-struct FrameData {
-
-    VkCommandPool _commandPool;
-    VkCommandBuffer _mainCommandBuffer;
-
-    VkSemaphore _swapchainSemaphore, _renderSemaphore;
-    VkFence _renderFence;
-
-    DescriptorAllocatorGrowable _frameDescriptors;
-
-    struct FrameDeletionQueue {
-        DeletionQueue<VkFence> fenceDeletion;
-        DeletionQueue<VkSemaphore> semaphoreDeletion;
-        DeletionQueue<VkCommandPool> commandPoolDeletion;
-    } _frameDeletionQueue;
-
-    void cleanup(VkDevice device)
-    {
-        _frameDeletionQueue.fenceDeletion.flush();
-        _frameDeletionQueue.semaphoreDeletion.flush();
-        _frameDeletionQueue.commandPoolDeletion.flush();
-        _frameDescriptors.destroy_pools(device);
-    }
-};
-
 struct Vertex {
     glm::vec3 position;
     float uv_x;

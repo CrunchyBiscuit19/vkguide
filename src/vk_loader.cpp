@@ -325,6 +325,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         }
     }
 
+    fmt::print("Loaded GLTF: {}\n", filePath);
+
     return scene;
 }
 
