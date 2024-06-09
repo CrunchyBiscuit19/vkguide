@@ -669,25 +669,23 @@ MeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Ver
     newSurface.vertexBuffer = create_buffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
     newSurface.indexBuffer = create_buffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    const AllocatedBuffer staging = create_buffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = staging.allocation->GetMappedData();
-    memcpy(data, vertices.data(), vertexBufferSize);
-    memcpy(static_cast<char*>(data) + vertexBufferSize, indices.data(), indexBufferSize);
+    const AllocatedBuffer stagingBuffer = create_buffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+    memcpy(stagingAddress, vertices.data(), vertexBufferSize);
+    memcpy(static_cast<char*>(stagingAddress) + vertexBufferSize, indices.data(), indexBufferSize);
+
+    VkBufferCopy vertexCopy { 0 };
+    vertexCopy.dstOffset = 0;
+    vertexCopy.srcOffset = 0;
+    vertexCopy.size = vertexBufferSize;
+    VkBufferCopy indexCopy { 0 };
+    indexCopy.dstOffset = 0;
+    indexCopy.srcOffset = vertexBufferSize;
+    indexCopy.size = indexBufferSize;
 
     immediate_submit([&](const VkCommandBuffer cmd) {
-        VkBufferCopy vertexCopy { 0 };
-        vertexCopy.dstOffset = 0;
-        vertexCopy.srcOffset = 0;
-        vertexCopy.size = vertexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
-
-        VkBufferCopy indexCopy { 0 };
-        indexCopy.dstOffset = 0;
-        indexCopy.srcOffset = vertexBufferSize;
-        indexCopy.size = indexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
     });
 
     return newSurface;
@@ -785,17 +783,18 @@ void VulkanEngine::create_indirect_commands()
         const auto& indirectCommand = indirectBatch.second;
         const auto indirectCommandSize = indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-        const AllocatedBuffer staging = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-        void* data = staging.allocation->GetMappedData();
-        memcpy(data, indirectCommand.data(), indirectCommandSize);
+        const AllocatedBuffer stagingBuffer = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+        memcpy(stagingAddress, indirectCommand.data(), indirectCommandSize);
 
         indirectBuffers[indirectBatch.first] = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        VkBufferCopy indirectCopy {};
+        indirectCopy.dstOffset = 0;
+        indirectCopy.srcOffset = 0;
+        indirectCopy.size = indirectCommandSize;
+
         immediate_submit([&](const VkCommandBuffer cmd) {
-            VkBufferCopy indirectCopy {};
-            indirectCopy.dstOffset = 0;
-            indirectCopy.srcOffset = 0;
-            indirectCopy.size = indirectCommandSize;
-            vkCmdCopyBuffer(cmd, staging.buffer, indirectBuffers[indirectBatch.first].buffer, 1, &indirectCopy);
+            vkCmdCopyBuffer(cmd, stagingBuffer.buffer, indirectBuffers[indirectBatch.first].buffer, 1, &indirectCopy);
         });
     }
 }
@@ -814,17 +813,18 @@ void VulkanEngine::create_instanced_data()
 
     const auto instanceDataSize = instanceData.size() * sizeof(InstanceData);
 
-    const AllocatedBuffer staging = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = staging.allocation->GetMappedData();
-    memcpy(data, instanceData.data(), instanceDataSize);
+    const AllocatedBuffer stagingBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+    memcpy(stagingAddress, instanceData.data(), instanceDataSize);
 
     instanceBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    VkBufferCopy instanceCopy {};
+    instanceCopy.dstOffset = 0;
+    instanceCopy.srcOffset = 0;
+    instanceCopy.size = instanceDataSize;
+
     immediate_submit([&](const VkCommandBuffer cmd) {
-        VkBufferCopy instanceCopy {};
-        instanceCopy.dstOffset = 0;
-        instanceCopy.srcOffset = 0;
-        instanceCopy.size = instanceDataSize;
-        vkCmdCopyBuffer(cmd, staging.buffer, instanceBuffer.buffer, 1, &instanceCopy);
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, instanceBuffer.buffer, 1, &instanceCopy);
     });
 }
 
@@ -846,22 +846,21 @@ void VulkanEngine::create_vertex_index_buffers()
     int currentIndexOffset = 0;
     for (const auto& model : loadedModels | std::views::values) {
         for (const auto& mesh : model->meshes | std::views::values) {
-            immediate_submit([&](const VkCommandBuffer cmd) {
-                VkBufferCopy vertexCopy {};
-                vertexCopy.dstOffset = currentVertexOffset;
-                vertexCopy.srcOffset = 0;
-                vertexCopy.size = mesh->meshBuffers.vertexBuffer.info.size;
-                vkCmdCopyBuffer(cmd, mesh->meshBuffers.vertexBuffer.buffer, indirectVertexBuffer.buffer, 1, &vertexCopy);
-            });
-            currentVertexOffset += mesh->meshBuffers.vertexBuffer.info.size;
+            VkBufferCopy vertexCopy {};
+            vertexCopy.dstOffset = currentVertexOffset;
+            vertexCopy.srcOffset = 0;
+            vertexCopy.size = mesh->meshBuffers.vertexBuffer.info.size;
+            VkBufferCopy indexCopy {};
+            indexCopy.dstOffset = currentIndexOffset;
+            indexCopy.srcOffset = 0;
+            indexCopy.size = mesh->meshBuffers.indexBuffer.info.size;
 
             immediate_submit([&](const VkCommandBuffer cmd) {
-                VkBufferCopy indexCopy {};
-                indexCopy.dstOffset = currentIndexOffset;
-                indexCopy.srcOffset = 0;
-                indexCopy.size = mesh->meshBuffers.indexBuffer.info.size;
+                vkCmdCopyBuffer(cmd, mesh->meshBuffers.vertexBuffer.buffer, indirectVertexBuffer.buffer, 1, &vertexCopy);
                 vkCmdCopyBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, indirectIndexBuffer.buffer, 1, &indexCopy);
             });
+
+            currentVertexOffset += mesh->meshBuffers.vertexBuffer.info.size;
             currentIndexOffset += mesh->meshBuffers.indexBuffer.info.size;
         }
     }
@@ -869,18 +868,27 @@ void VulkanEngine::create_vertex_index_buffers()
 
 void VulkanEngine::create_scene_buffer()
 {
+    sceneData.ambientColor = glm::vec4(.1f);
+    sceneData.sunlightColor = glm::vec4(1.f);
+    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
+    mainCamera.updatePosition(stats.frametime, static_cast<float>(ONE_SECOND_IN_MILLISECONDS / EXPECTED_FRAME_RATE));
+    sceneData.view = mainCamera.getViewMatrix();
+    sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
+    sceneData.proj[1][1] *= -1;
+    sceneData.viewproj = sceneData.proj * sceneData.view;
+
     sceneBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    const AllocatedBuffer staging = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = staging.allocation->GetMappedData();
-    memcpy(data, &sceneData, sizeof(SceneData));
+    const AllocatedBuffer stagingBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+    memcpy(stagingAddress, &sceneData, sizeof(SceneData));
 
     immediate_submit([&](const VkCommandBuffer cmd) {
         VkBufferCopy sceneCopy {};
         sceneCopy.dstOffset = 0;
         sceneCopy.srcOffset = 0;
         sceneCopy.size = sizeof(SceneData);
-        vkCmdCopyBuffer(cmd, staging.buffer, sceneBuffer.buffer, 1, &sceneCopy);
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, sceneBuffer.buffer, 1, &sceneCopy);
     });
 }
 
@@ -893,20 +901,20 @@ void VulkanEngine::create_material_buffer()
 
     materialConstantsBuffer = create_buffer(totalMaterialsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    const AllocatedBuffer staging = create_buffer(sizeof(MaterialConstants), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* data = staging.allocation->GetMappedData();
+    const AllocatedBuffer stagingBuffer = create_buffer(sizeof(MaterialConstants), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     int currentMaterialOffset = 0;
     int currentMaterialIndex = 0;
     for (const auto& model : loadedModels | std::views::values) {
         for (const auto& material : model->materials | std::views::values) {
-            memcpy(data, &material->data, sizeof(MaterialConstants));
+            memcpy(stagingAddress, &material->data.constants, sizeof(MaterialConstants));
             immediate_submit([&](const VkCommandBuffer cmd) {
                 VkBufferCopy materialCopy {};
                 materialCopy.dstOffset = currentMaterialOffset;
                 materialCopy.srcOffset = 0;
                 materialCopy.size = sizeof(MaterialConstants);
-                vkCmdCopyBuffer(cmd, staging.buffer, materialConstantsBuffer.buffer, 1, &materialCopy);
+                vkCmdCopyBuffer(cmd, stagingBuffer.buffer, materialConstantsBuffer.buffer, 1, &materialCopy);
             });
             currentMaterialOffset += sizeof(MaterialConstants);
 
@@ -941,20 +949,12 @@ void VulkanEngine::update_scene()
 
     indirectBatches.clear();
     indirectBuffers.clear();
+
     create_indirect_commands();
     create_instanced_data();
     create_vertex_index_buffers();
     create_material_buffer();
     create_material_texture_array();
-
-    sceneData.ambientColor = glm::vec4(.1f);
-    sceneData.sunlightColor = glm::vec4(1.f);
-    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
-    mainCamera.updatePosition(stats.frametime, static_cast<float>(ONE_SECOND_IN_MILLISECONDS / EXPECTED_FRAME_RATE));
-    sceneData.view = mainCamera.getViewMatrix();
-    sceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(_windowExtent.width) / static_cast<float>(_windowExtent.height), 10000.f, 0.1f);
-    sceneData.proj[1][1] *= -1;
-    sceneData.viewproj = sceneData.proj * sceneData.view;
     create_scene_buffer();
 
     const auto end = std::chrono::system_clock::now();
