@@ -544,6 +544,9 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
 
     vkDestroyShaderModule(_device, meshFragShader, nullptr);
     vkDestroyShaderModule(_device, meshVertexShader, nullptr);
+    _pipelineDeletionQueue.pipelines.push_resource(_device, materialPipeline.pipeline, nullptr);
+    _pipelineDeletionQueue.pipelineLayouts.push_resource(_device, materialPipeline.layout, nullptr);
+    _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, materialTexturesArraySetLayout, nullptr);
 
     pipelinesCreated[optionsHash] = materialPipeline;
 
@@ -970,6 +973,8 @@ void VulkanEngine::cleanup_pipeline_caches()
 
 void VulkanEngine::cleanup_pipelines()
 {
+    _pipelineDeletionQueue.pipelines.flush();
+    _pipelineDeletionQueue.pipelineLayouts.flush();
 }
 
 void VulkanEngine::cleanup_samplers()

@@ -146,6 +146,11 @@ public:
         DeletionQueue<VkCommandPool> commandPools;
     } _immediateDeletionQueue;
 
+    struct PipelineDeletionQueue {
+        DeletionQueue<VkPipeline> pipelines;
+        DeletionQueue<VkPipelineLayout> pipelineLayouts;
+    } _pipelineDeletionQueue;
+
     struct BufferDeletionQueue {
         DeletionQueue<VkBuffer> buffers;
     } _genericBufferDeletionQueue;
