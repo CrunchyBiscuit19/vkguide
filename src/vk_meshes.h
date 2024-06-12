@@ -34,6 +34,13 @@ struct Node {
     virtual ~Node() = default;
 };
 
+struct MeshBuffers {
+    AllocatedBuffer indexBuffer;
+    int indexCount;
+    AllocatedBuffer vertexBuffer;
+    int vertexCount;
+};
+
 struct MeshData {
     std::string name;
     std::vector<Primitive> primitives; // Mesh primitives, one material per primitve

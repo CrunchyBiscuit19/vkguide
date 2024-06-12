@@ -185,9 +185,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         vertices.clear();
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
-            Primitive newSurface;
-            newSurface.firstIndex = static_cast<uint32_t>(indices.size());
-            newSurface.indexCount = static_cast<uint32_t>(gltf.accessors[p.indicesAccessor.value()].count);
+            Primitive newPrimitive;
+            newPrimitive.firstIndex = static_cast<uint32_t>(indices.size());
+            newPrimitive.indexCount = static_cast<uint32_t>(gltf.accessors[p.indicesAccessor.value()].count);
 
             size_t initialVerticesSize = vertices.size();
             // Load indexes
@@ -207,7 +207,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                 // Add the vertices of current primitive to the previous ones
                 fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
                 vertices.resize(vertices.size() + posAccessor.count);
-                newSurface.vertexCount = posAccessor.count;
+                newPrimitive.vertexCount = posAccessor.count;
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor, // Default all the params
                     [&](glm::vec3 v, size_t index) {
                         Vertex newvtx;
@@ -249,9 +249,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             }
 
             if (p.materialIndex.has_value())
-                newSurface.material = materials[p.materialIndex.value()];
+                newPrimitive.material = materials[p.materialIndex.value()];
             else
-                newSurface.material = materials[0];
+                newPrimitive.material = materials[0];
 
             // Loop the vertices of this surface, find min/max bounds
             glm::vec3 minpos = vertices[initialVerticesSize].position;
@@ -261,11 +261,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                 maxpos = glm::max(maxpos, vertices[i].position);
             }
             // Calculate origin and extents from the min/max, use extent lenght for radius
-            newSurface.bounds.origin = (maxpos + minpos) / 2.f;
-            newSurface.bounds.extents = (maxpos - minpos) / 2.f;
-            newSurface.bounds.sphereRadius = glm::length(newSurface.bounds.extents);
+            newPrimitive.bounds.origin = (maxpos + minpos) / 2.f;
+            newPrimitive.bounds.extents = (maxpos - minpos) / 2.f;
+            newPrimitive.bounds.sphereRadius = glm::length(newPrimitive.bounds.extents);
 
-            newmesh->primitives.push_back(newSurface);
+            newmesh->primitives.push_back(newPrimitive);
         }
 
         newmesh->meshBuffers = engine->upload_mesh(indices, vertices);

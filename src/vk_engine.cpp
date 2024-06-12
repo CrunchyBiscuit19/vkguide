@@ -29,8 +29,10 @@ constexpr bool bUseValidationLayers = false;
 constexpr bool bUseValidationLayers = true;
 #endif
 
-constexpr int objectCount = 9000;
+constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
+// const std::vector<std::string> modelFilepaths { "../../assets/AntiqueCamera/AntiqueCamera.glb" };
+const std::vector<std::string> modelFilepaths { "../../assets/toycar/ToyCar.glb" };
 
 VulkanEngine* loadedEngine = nullptr;
 
@@ -66,7 +68,7 @@ void VulkanEngine::init()
     init_pipelines();
     init_imgui();
     init_default_data();
-    init_models({ "../../assets/AntiqueCamera/AntiqueCamera.glb" });
+    init_models(modelFilepaths);
     mainCamera.init();
 
     // Everything went fine
@@ -332,6 +334,7 @@ void VulkanEngine::init_descriptors()
 
     _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, _stockImageDescriptorLayout, nullptr);
     _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, _drawImageDescriptorLayout, nullptr);
+    _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, materialTexturesArraySetLayout, nullptr);
 }
 
 void VulkanEngine::init_pipeline_caches()
@@ -544,7 +547,6 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     vkDestroyShaderModule(_device, meshVertexShader, nullptr);
     _pipelineDeletionQueue.pipelines.push_resource(_device, materialPipeline.pipeline, nullptr);
     _pipelineDeletionQueue.pipelineLayouts.push_resource(_device, materialPipeline.layout, nullptr);
-    _descriptorDeletionQueue.descriptorSetLayouts.push_resource(_device, materialTexturesArraySetLayout, nullptr);
 
     pipelinesCreated[optionsHash] = materialPipeline;
 
@@ -731,14 +733,16 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     vkCmdBindIndexBuffer(cmd, indirectIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     for (const auto& indirectBatch : indirectBatches) {
-        create_material_buffer(*indirectBatch.first);
-        create_material_texture_array(*indirectBatch.first);
+        PbrMaterial* currentMaterial = indirectBatch.first;
+
+        create_material_buffer(*currentMaterial);
+        create_material_texture_array(*currentMaterial);
         deviceAddressInfo.buffer = materialConstantsBuffer.buffer;
         pushConstants.materialsBuffer = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
 
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline.pipeline); // TODO Check for same pipeline in previous loop
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, indirectBatch.first->pipeline.layout, 0, 1, &materialTexturesArrayDescriptorSet, 0, nullptr);
-        vkCmdPushConstants(cmd, indirectBatch.first->pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->pipeline.pipeline); // TODO Check for same pipeline in previous loop
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->pipeline.layout, 0, 1, &materialTexturesArrayDescriptorSet, 0, nullptr);
+        vkCmdPushConstants(cmd, currentMaterial->pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
         // Set dynamic viewport
         VkViewport viewport = {};
@@ -757,7 +761,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         scissor.extent.height = _drawExtent.height;
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        vkCmdDrawIndexedIndirect(cmd, indirectBuffers[indirectBatch.first].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
+        vkCmdDrawIndexedIndirect(cmd, indirectBuffers[currentMaterial].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
         stats.drawcall_count++;
     }
 
@@ -768,12 +772,50 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     stats.mesh_draw_time = static_cast<float>(elapsed.count()) / 1000.f;
 }
 
+void VulkanEngine::create_vertex_index_buffers()
+{
+    int totalVertexSize = 0;
+    int totalIndexSize = 0;
+    for (const auto& model : loadedModels | std::views::values) {
+        for (const auto& mesh : model->meshes | std::views::values) {
+            totalVertexSize += mesh->meshBuffers.vertexBuffer.info.size;
+            totalIndexSize += mesh->meshBuffers.indexBuffer.info.size;
+        }
+    }
+
+    indirectVertexBuffer = create_buffer(totalVertexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _bufferDeletionQueue.perDrawBuffers);
+    indirectIndexBuffer = create_buffer(totalIndexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
+
+    int currentVertexOffset = 0;
+    int currentIndexOffset = 0;
+    for (const auto& model : loadedModels | std::views::values) {
+        for (const auto& mesh : model->meshes | std::views::values) {
+            VkBufferCopy vertexCopy {};
+            vertexCopy.dstOffset = currentVertexOffset;
+            vertexCopy.srcOffset = 0;
+            vertexCopy.size = mesh->meshBuffers.vertexBuffer.info.size;
+            VkBufferCopy indexCopy {};
+            indexCopy.dstOffset = currentIndexOffset;
+            indexCopy.srcOffset = 0;
+            indexCopy.size = mesh->meshBuffers.indexBuffer.info.size;
+
+            immediate_submit([&](const VkCommandBuffer cmd) {
+                vkCmdCopyBuffer(cmd, mesh->meshBuffers.vertexBuffer.buffer, indirectVertexBuffer.buffer, 1, &vertexCopy);
+                vkCmdCopyBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, indirectIndexBuffer.buffer, 1, &indexCopy);
+            });
+
+            currentVertexOffset += mesh->meshBuffers.vertexBuffer.info.size;
+            currentIndexOffset += mesh->meshBuffers.indexBuffer.info.size;
+        }
+    }
+}
+
 void VulkanEngine::create_indirect_commands()
 {
     // Batch one vector of indirect draw commands per material
     int totalPrimitives = 0;
+    int totalVertex = 0;
     for (const auto& model : loadedModels | std::views::values) {
-        int totalVertex = 0;
 
         VkDrawIndexedIndirectCommand indirectCmd {};
         indirectCmd.instanceCount = objectCount;
@@ -781,9 +823,9 @@ void VulkanEngine::create_indirect_commands()
 
         for (const auto& mesh : model->meshes | std::views::values) {
             for (const auto& primitive : mesh->primitives) {
-                indirectCmd.vertexOffset = 0;
+                indirectCmd.vertexOffset = totalVertex;
                 indirectCmd.indexCount = primitive.indexCount;
-                indirectCmd.firstIndex = primitive.firstIndex;
+                indirectCmd.firstIndex = primitive.firstIndex; // TODO move from loader to when we building vertex and index buffer
 
                 indirectBatches[primitive.material.get()].push_back(indirectCmd);
 
@@ -841,44 +883,6 @@ void VulkanEngine::create_instanced_data()
     immediate_submit([&](const VkCommandBuffer cmd) {
         vkCmdCopyBuffer(cmd, stagingBuffer.buffer, instanceBuffer.buffer, 1, &instanceCopy);
     });
-}
-
-void VulkanEngine::create_vertex_index_buffers()
-{
-    int totalVertexSize = 0;
-    int totalIndexSize = 0;
-    for (const auto& model : loadedModels | std::views::values) {
-        for (const auto& mesh : model->meshes | std::views::values) {
-            totalVertexSize += mesh->meshBuffers.vertexBuffer.info.size;
-            totalIndexSize += mesh->meshBuffers.indexBuffer.info.size;
-        }
-    }
-
-    indirectVertexBuffer = create_buffer(totalVertexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _bufferDeletionQueue.perDrawBuffers);
-    indirectIndexBuffer = create_buffer(totalIndexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
-
-    int currentVertexOffset = 0;
-    int currentIndexOffset = 0;
-    for (const auto& model : loadedModels | std::views::values) {
-        for (const auto& mesh : model->meshes | std::views::values) {
-            VkBufferCopy vertexCopy {};
-            vertexCopy.dstOffset = currentVertexOffset;
-            vertexCopy.srcOffset = 0;
-            vertexCopy.size = mesh->meshBuffers.vertexBuffer.info.size;
-            VkBufferCopy indexCopy {};
-            indexCopy.dstOffset = currentIndexOffset;
-            indexCopy.srcOffset = 0;
-            indexCopy.size = mesh->meshBuffers.indexBuffer.info.size;
-
-            immediate_submit([&](const VkCommandBuffer cmd) {
-                vkCmdCopyBuffer(cmd, mesh->meshBuffers.vertexBuffer.buffer, indirectVertexBuffer.buffer, 1, &vertexCopy);
-                vkCmdCopyBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, indirectIndexBuffer.buffer, 1, &indexCopy);
-            });
-
-            currentVertexOffset += mesh->meshBuffers.vertexBuffer.info.size;
-            currentIndexOffset += mesh->meshBuffers.indexBuffer.info.size;
-        }
-    }
 }
 
 void VulkanEngine::create_scene_buffer()
@@ -948,9 +952,9 @@ void VulkanEngine::update_scene()
     indirectBatches.clear();
     indirectBuffers.clear();
 
+    create_vertex_index_buffers();
     create_indirect_commands();
     create_instanced_data();
-    create_vertex_index_buffers();
     create_scene_buffer();
 
     const auto end = std::chrono::system_clock::now();
@@ -971,8 +975,8 @@ void VulkanEngine::cleanup_swapchain()
 
 void VulkanEngine::cleanup_descriptors()
 {
-    _descriptorDeletionQueue.descriptorSetLayouts.flush();
     _globalDescriptorAllocator.destroy_pools(_device);
+    _descriptorDeletionQueue.descriptorSetLayouts.flush();
 }
 
 void VulkanEngine::cleanup_pipeline_caches()
@@ -1057,7 +1061,7 @@ void VulkanEngine::draw()
     VK_CHECK(vkResetFences(_device, 1, &(get_current_frame()._renderFence))); // Flip to unsignalled
 
     get_current_frame()._frameDescriptors.clear_pools(_device);
-    get_current_frame()._frameDeletionQueue.bufferDeletion.flush();
+    get_current_frame()._frameDeletionQueue.bufferDeletion.flush(); // For buffers that are used by cmd buffers. Wait for fence of this frame to be reset before flushing.
     _bufferDeletionQueue.perDrawBuffers.flush();
     update_scene();
 

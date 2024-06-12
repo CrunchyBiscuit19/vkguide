@@ -207,9 +207,9 @@ public:
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
     void draw_geometry(VkCommandBuffer cmd);
 
+    void create_vertex_index_buffers();
     void create_indirect_commands();
     void create_instanced_data();
-    void create_vertex_index_buffers();
     void create_scene_buffer();
     void create_material_buffer(PbrMaterial& material);
     void create_material_texture_array(PbrMaterial& material);

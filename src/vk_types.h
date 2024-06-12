@@ -147,13 +147,6 @@ struct Vertex {
     glm::vec4 color;
 };
 
-struct MeshBuffers {
-    AllocatedBuffer indexBuffer;
-    int indexCount;
-    AllocatedBuffer vertexBuffer;
-    int vertexCount;
-};
-
 struct SSBOAddresses {
     VkDeviceAddress vertexBuffer;
     VkDeviceAddress instanceBuffer;
