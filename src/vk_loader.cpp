@@ -213,7 +213,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                         Vertex newvtx;
                         newvtx.position = v;
                         newvtx.normal = { 1, 0, 0 };
-                        newvtx.color = glm::vec4 { 1.f };
                         newvtx.uv_x = 0;
                         newvtx.uv_y = 0;
                         vertices[initialVerticesSize + index] = newvtx;
@@ -236,15 +235,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                     [&](glm::vec2 v, size_t index) {
                         vertices[initialVerticesSize + index].uv_x = v.x;
                         vertices[initialVerticesSize + index].uv_y = v.y;
-                    });
-            }
-
-            // Load vertex colors
-            auto colors = p.findAttribute("COLOR_0");
-            if (colors != p.attributes.end()) {
-                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*colors).second],
-                    [&](glm::vec4 v, size_t index) {
-                        vertices[initialVerticesSize + index].color = v;
                     });
             }
 

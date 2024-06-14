@@ -31,10 +31,12 @@ constexpr bool bUseValidationLayers = true;
 
 constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
-const std::vector<std::string> modelFilepaths { "../../assets/structure/structure.glb" };
-//const std::vector<std::string> modelFilepaths { "../../assets/AntiqueCamera/AntiqueCamera.glb" };
-//const std::vector<std::string> modelFilepaths { "../../assets/toycar/toycar.glb" };
-
+const std::vector<std::string> modelFilepaths { 
+//    "../../assets/scifihelmet/SciFiHelmet.gltf",
+//    "../../assets/AntiqueCamera/AntiqueCamera.glb",
+    "../../assets/toycar/toycar.glb",
+//    "../../assets/sponza/Sponza.gltf"
+};
 VulkanEngine* loadedEngine = nullptr;
 
 VulkanEngine& VulkanEngine::Get()
@@ -841,8 +843,6 @@ void VulkanEngine::iterate_primitives()
             currentIndexOffset += mesh->meshBuffers.indexBuffer.info.size;
         }
     }
-    std::cout << "Total vertices " << totalVertices << std::endl;
-    std::cout << "Total primitives " << totalPrimitives << std::endl;
 
 }
 
