@@ -31,8 +31,9 @@ constexpr bool bUseValidationLayers = true;
 
 constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
-// const std::vector<std::string> modelFilepaths { "../../assets/AntiqueCamera/AntiqueCamera.glb" };
-const std::vector<std::string> modelFilepaths { "../../assets/toycar/ToyCar.glb" };
+const std::vector<std::string> modelFilepaths { "../../assets/structure/structure.glb" };
+//const std::vector<std::string> modelFilepaths { "../../assets/AntiqueCamera/AntiqueCamera.glb" };
+//const std::vector<std::string> modelFilepaths { "../../assets/toycar/toycar.glb" };
 
 VulkanEngine* loadedEngine = nullptr;
 
@@ -735,8 +736,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     for (const auto& indirectBatch : indirectBatches) {
         PbrMaterial* currentMaterial = indirectBatch.first;
 
-        create_material_buffer(*currentMaterial);
-        create_material_texture_array(*currentMaterial);
+        update_material_buffer(*currentMaterial);
+        update_material_texture_array(*currentMaterial);
         deviceAddressInfo.buffer = materialConstantsBuffer.buffer;
         pushConstants.materialsBuffer = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
 
@@ -782,59 +783,71 @@ void VulkanEngine::create_vertex_index_buffers()
             totalIndexSize += mesh->meshBuffers.indexBuffer.info.size;
         }
     }
-
     indirectVertexBuffer = create_buffer(totalVertexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _bufferDeletionQueue.perDrawBuffers);
     indirectIndexBuffer = create_buffer(totalIndexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
+}
+
+void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int vertexOffset,
+    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int indexOffset)
+{
+    VkBufferCopy vertexCopy {};
+    vertexCopy.dstOffset = vertexOffset;
+    vertexCopy.srcOffset = 0;
+    vertexCopy.size = srcVertex.info.size;
+    VkBufferCopy indexCopy {};
+    indexCopy.dstOffset = indexOffset;
+    indexCopy.srcOffset = 0;
+    indexCopy.size = srcIndex.info.size;
+
+    immediate_submit([&](const VkCommandBuffer cmd) {
+        vkCmdCopyBuffer(cmd, srcVertex.buffer, dstVertex.buffer, 1, &vertexCopy);
+        vkCmdCopyBuffer(cmd, srcIndex.buffer, dstIndex.buffer, 1, &indexCopy);
+    });
+}
+
+void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset)
+{
+    VkDrawIndexedIndirectCommand indirectCmd {};
+    indirectCmd.instanceCount = objectCount;
+    indirectCmd.firstInstance = 0;
+    indirectCmd.vertexOffset = verticesOffset;
+    indirectCmd.indexCount = primitive.indexCount;
+    indirectCmd.firstIndex = indicesOffset;
+
+    indirectBatches[primitive.material.get()].push_back(indirectCmd);
+
+    verticesOffset += primitive.vertexCount;
+    indicesOffset += primitive.indexCount;
+    primitivesOffset++;
+}
+
+void VulkanEngine::iterate_primitives()
+{
+    // TODO Update the index buffer data to add the total number of vertices already in the vertex buffer data to each integer index
 
     int currentVertexOffset = 0;
     int currentIndexOffset = 0;
+    int totalVertices = 0;
+    int totalIndices = 0;
+    int totalPrimitives = 0;
+
     for (const auto& model : loadedModels | std::views::values) {
         for (const auto& mesh : model->meshes | std::views::values) {
-            VkBufferCopy vertexCopy {};
-            vertexCopy.dstOffset = currentVertexOffset;
-            vertexCopy.srcOffset = 0;
-            vertexCopy.size = mesh->meshBuffers.vertexBuffer.info.size;
-            VkBufferCopy indexCopy {};
-            indexCopy.dstOffset = currentIndexOffset;
-            indexCopy.srcOffset = 0;
-            indexCopy.size = mesh->meshBuffers.indexBuffer.info.size;
-
-            immediate_submit([&](const VkCommandBuffer cmd) {
-                vkCmdCopyBuffer(cmd, mesh->meshBuffers.vertexBuffer.buffer, indirectVertexBuffer.buffer, 1, &vertexCopy);
-                vkCmdCopyBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, indirectIndexBuffer.buffer, 1, &indexCopy);
-            });
-
+            update_vertex_index_buffers(mesh->meshBuffers.vertexBuffer, indirectVertexBuffer, currentVertexOffset, mesh->meshBuffers.indexBuffer, indirectIndexBuffer, currentIndexOffset);
+            for (auto& primitive : mesh->primitives) {
+                update_indirect_commands(primitive, totalVertices, totalIndices, totalPrimitives);
+            }
             currentVertexOffset += mesh->meshBuffers.vertexBuffer.info.size;
             currentIndexOffset += mesh->meshBuffers.indexBuffer.info.size;
         }
     }
+    std::cout << "Total vertices " << totalVertices << std::endl;
+    std::cout << "Total primitives " << totalPrimitives << std::endl;
+
 }
 
-void VulkanEngine::create_indirect_commands()
+void VulkanEngine::update_indirect_batches()
 {
-    // Batch one vector of indirect draw commands per material
-    int totalPrimitives = 0;
-    int totalVertex = 0;
-    for (const auto& model : loadedModels | std::views::values) {
-
-        VkDrawIndexedIndirectCommand indirectCmd {};
-        indirectCmd.instanceCount = objectCount;
-        indirectCmd.firstInstance = totalPrimitives * objectCount;
-
-        for (const auto& mesh : model->meshes | std::views::values) {
-            for (const auto& primitive : mesh->primitives) {
-                indirectCmd.vertexOffset = totalVertex;
-                indirectCmd.indexCount = primitive.indexCount;
-                indirectCmd.firstIndex = primitive.firstIndex; // TODO move from loader to when we building vertex and index buffer
-
-                indirectBatches[primitive.material.get()].push_back(indirectCmd);
-
-                totalVertex += primitive.vertexCount;
-                totalPrimitives++;
-            }
-        }
-    }
-
     // Create one indirect buffer for each material based on associated indirect draw commands
     for (const auto& indirectBatch : indirectBatches) {
         const auto& indirectCommand = indirectBatch.second;
@@ -856,7 +869,7 @@ void VulkanEngine::create_indirect_commands()
     }
 }
 
-void VulkanEngine::create_instanced_data()
+void VulkanEngine::update_instanced_data()
 {
     std::vector<InstanceData> instanceData;
     instanceData.resize(objectCount);
@@ -885,7 +898,7 @@ void VulkanEngine::create_instanced_data()
     });
 }
 
-void VulkanEngine::create_scene_buffer()
+void VulkanEngine::update_scene_buffer()
 {
     sceneData.ambientColor = glm::vec4(.1f);
     sceneData.sunlightColor = glm::vec4(1.f);
@@ -912,7 +925,7 @@ void VulkanEngine::create_scene_buffer()
     });
 }
 
-void VulkanEngine::create_material_buffer(PbrMaterial& material)
+void VulkanEngine::update_material_buffer(PbrMaterial& material)
 {
     int materialConstantsSize = sizeof(MaterialConstants);
     materialConstantsBuffer = create_buffer(materialConstantsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, _bufferDeletionQueue.perDrawBuffers);
@@ -931,7 +944,7 @@ void VulkanEngine::create_material_buffer(PbrMaterial& material)
     });
 }
 
-void VulkanEngine::create_material_texture_array(PbrMaterial& material)
+void VulkanEngine::update_material_texture_array(PbrMaterial& material)
 {
     DescriptorWriter writer;
     int materialIndex = 0;
@@ -953,9 +966,10 @@ void VulkanEngine::update_scene()
     indirectBuffers.clear();
 
     create_vertex_index_buffers();
-    create_indirect_commands();
-    create_instanced_data();
-    create_scene_buffer();
+    iterate_primitives();
+    update_indirect_batches();
+    update_instanced_data();
+    update_scene_buffer();
 
     const auto end = std::chrono::system_clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);

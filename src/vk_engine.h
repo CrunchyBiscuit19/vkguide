@@ -208,11 +208,15 @@ public:
     void draw_geometry(VkCommandBuffer cmd);
 
     void create_vertex_index_buffers();
-    void create_indirect_commands();
-    void create_instanced_data();
-    void create_scene_buffer();
-    void create_material_buffer(PbrMaterial& material);
-    void create_material_texture_array(PbrMaterial& material);
+    void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int vertexOffset,
+    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int indexOffset);
+    void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
+    void iterate_primitives();
+    void update_indirect_batches();
+    void update_instanced_data();
+    void update_scene_buffer();
+    void update_material_buffer(PbrMaterial& material);
+    void update_material_texture_array(PbrMaterial& material);
     void update_scene();
 
     void cleanup_immediate();
