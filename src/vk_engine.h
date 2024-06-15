@@ -93,10 +93,6 @@ public:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
     bool _resize_requested;
-    struct SwapchainDeletionQueue {
-        DeletionQueue<VkSwapchainKHR> swapchains;
-        DeletionQueue<VkImageView> imageViews;
-    } _swapchainDeletionQueue;
 
     // Pipeline things
     std::vector<char> pipelineCacheData;
@@ -135,9 +131,6 @@ public:
     // Samplers
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
-    struct SamplerDeletionQueue {
-        DeletionQueue<VkSampler> samplers;
-    } _samplerDeletionQueue;
 
     // Camera
     Camera mainCamera;
@@ -149,6 +142,15 @@ public:
     VkDescriptorPool _imguiDescriptorPool;
 
     // Deletion queues
+    struct SwapchainDeletionQueue {
+        DeletionQueue<VkSwapchainKHR> swapchains;
+        DeletionQueue<VkImageView> imageViews;
+    } _swapchainDeletionQueue;
+
+    struct SamplerDeletionQueue {
+        DeletionQueue<VkSampler> samplers;
+    } _samplerDeletionQueue;
+
     struct ImmediateDeletionQueue {
         DeletionQueue<VkFence> fences;
         DeletionQueue<VkCommandPool> commandPools;

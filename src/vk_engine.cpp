@@ -32,10 +32,12 @@ constexpr bool bUseValidationLayers = true;
 constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::string> modelFilepaths { 
-//    "../../assets/scifihelmet/SciFiHelmet.gltf",
+//    "../../assets/scifihelmet/SciFiHelmet.glb",
+//    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
 //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
-    "../../assets/toycar/toycar.glb",
-//    "../../assets/sponza/Sponza.gltf"
+//    "../../assets/toycar/toycar.glb",
+    "../../assets/sponza/Sponza.gltf",
+//    "../../assets/structure/structure.gltf",
 };
 VulkanEngine* loadedEngine = nullptr;
 
@@ -765,6 +767,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
         vkCmdDrawIndexedIndirect(cmd, indirectBuffers[currentMaterial].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
+
         stats.drawcall_count++;
     }
 
@@ -850,18 +853,18 @@ void VulkanEngine::update_indirect_batches()
 {
     // Create one indirect buffer for each material based on associated indirect draw commands
     for (const auto& indirectBatch : indirectBatches) {
-        const auto& indirectCommand = indirectBatch.second;
-        const auto indirectCommandSize = indirectCommand.size() * sizeof(VkDrawIndexedIndirectCommand);
+        const auto& indirectCommands = indirectBatch.second;
+        const auto indirectCommandsSize = indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-        const AllocatedBuffer stagingBuffer = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
+        const AllocatedBuffer stagingBuffer = create_buffer(indirectCommandsSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VMA_MEMORY_USAGE_CPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
         void* stagingAddress = stagingBuffer.allocation->GetMappedData();
-        memcpy(stagingAddress, indirectCommand.data(), indirectCommandSize);
+        memcpy(stagingAddress, indirectCommands.data(), indirectCommandsSize);
 
-        indirectBuffers[indirectBatch.first] = create_buffer(indirectCommandSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
+        indirectBuffers[indirectBatch.first] = create_buffer(indirectCommandsSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, get_current_frame()._frameDeletionQueue.bufferDeletion);
         VkBufferCopy indirectCopy {};
         indirectCopy.dstOffset = 0;
         indirectCopy.srcOffset = 0;
-        indirectCopy.size = indirectCommandSize;
+        indirectCopy.size = indirectCommandsSize;
 
         immediate_submit([&](const VkCommandBuffer cmd) {
             vkCmdCopyBuffer(cmd, stagingBuffer.buffer, indirectBuffers[indirectBatch.first].buffer, 1, &indirectCopy);

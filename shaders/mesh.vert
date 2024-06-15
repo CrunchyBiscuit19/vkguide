@@ -3,15 +3,12 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_buffer_reference : require
 
-#include "input_structures.glsl"
-
 layout (location = 0) out vec3 outNormal;
-layout (location = 1) out vec3 outColor;
-layout (location = 2) out vec2 outUV;
+layout (location = 1) out vec2 outUV;
 
-layout (location = 3) out vec4 outAmbientColor;
-layout (location = 4) out vec4 outSunlightDirection;
-layout (location = 5) out vec4 outSunlightColor;
+layout (location = 2) out vec4 outAmbientColor;
+layout (location = 3) out vec4 outSunlightDirection;
+layout (location = 4) out vec4 outSunlightColor;
 
 // Buffer device addresses
 struct Vertex {
@@ -19,7 +16,6 @@ struct Vertex {
 	float uv_x;
 	vec3 normal;
 	float uv_y;
-	vec4 color;
 }; 
 struct Instance {
 	mat4 translation;
@@ -66,14 +62,19 @@ layout( push_constant, std430 ) uniform PushConstants
 
 void main() 
 {
+
 	Vertex v = constants.vertexBuffer.vertices[gl_VertexIndex];
 	vec4 position = vec4(v.position, 1.0f);
 
-	mat4 renderMatrix = constants.instanceBuffer.instances[gl_InstanceIndex].translation * constants.instanceBuffer.instances[gl_InstanceIndex].rotation * constants.instanceBuffer.instances[gl_InstanceIndex].scale;
-	gl_Position =  constants.sceneBuffer.sceneData.viewproj * renderMatrix * position; // pvm matrices
+	mat4 translation = constants.instanceBuffer.instances[gl_InstanceIndex].translation;
+	mat4 rotation = constants.instanceBuffer.instances[gl_InstanceIndex].rotation;
+	mat4 scale = constants.instanceBuffer.instances[gl_InstanceIndex].scale;
+	mat4 viewproj = constants.sceneBuffer.sceneData.viewproj; 
+
+	mat4 renderMatrix = translation * rotation * scale;
+	gl_Position =  viewproj * renderMatrix * position; // PVM matrices
 
 	outNormal = mat3(transpose(inverse(renderMatrix))) * v.normal;
-	outColor = v.color.xyz * constants.materialBuffer.material.baseFactor.xyz;	
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
 
