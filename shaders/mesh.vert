@@ -71,7 +71,7 @@ void main()
 	mat4 scale = constants.instanceBuffer.instances[gl_InstanceIndex].scale;
 	mat4 viewproj = constants.sceneBuffer.sceneData.viewproj; 
 
-	mat4 renderMatrix = translation * rotation * scale;
+	mat4 renderMatrix = mat4(1.0) * mat4(1.0) * mat4(1.0);
 	gl_Position =  viewproj * renderMatrix * position; // PVM matrices
 
 	outNormal = mat3(transpose(inverse(renderMatrix))) * v.normal;

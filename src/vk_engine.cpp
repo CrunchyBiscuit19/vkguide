@@ -31,13 +31,15 @@ constexpr bool bUseValidationLayers = true;
 
 constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
-const std::vector<std::string> modelFilepaths { 
-//    "../../assets/scifihelmet/SciFiHelmet.glb",
-//    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
-//    "../../assets/AntiqueCamera/AntiqueCamera.glb",
-//    "../../assets/toycar/toycar.glb",
-//    "../../assets/sponza/Sponza.gltf",
-    "../../assets/structure/structure.gltf",
+const std::vector<std::string> modelFilepaths {
+    //    "../../assets/scifihelmet/SciFiHelmet.glb",
+    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+    //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
+    //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
+    //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
+    //    "../../assets/toycar/toycar.glb",
+    //    "../../assets/sponza/Sponza.gltf",
+    "../../assets/structure/structure.glb",
 };
 VulkanEngine* loadedEngine = nullptr;
 
@@ -666,20 +668,15 @@ void VulkanEngine::destroy_image(const AllocatedImage& img)
     mImageDeletionQueue.images.push_resource(mDevice, img.image, nullptr, mAllocator, img.allocation);
 }
 
-MeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
+void VulkanEngine::upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices)
 {
     // Unefficient pattern of waiting for the GPU command to fully execute before continuing with CPU logic
 
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
-    MeshBuffers newSurface;
-
-    newSurface.vertexCount = vertices.size();
-    newSurface.indexCount = indices.size();
-
-    newSurface.vertexBuffer = create_buffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.genericBuffers);
-    newSurface.indexBuffer = create_buffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.genericBuffers);
+    primitive.vertexBuffer = create_buffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.genericBuffers);
+    primitive.indexBuffer = create_buffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.genericBuffers);
 
     const AllocatedBuffer stagingBuffer = create_buffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, mBufferDeletionQueue.tempBuffers);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
@@ -696,86 +693,9 @@ MeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Ver
     indexCopy.size = indexBufferSize;
 
     immediate_submit([&](const VkCommandBuffer cmd) {
-        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
-        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, primitive.vertexBuffer.buffer, 1, &vertexCopy);
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, primitive.indexBuffer.buffer, 1, &indexCopy);
     });
-
-    return newSurface;
-}
-
-void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const
-{
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
-    const VkRenderingInfo renderInfo = vkinit::rendering_info(mSwapchainExtent, &colorAttachment, nullptr);
-
-    vkCmdBeginRendering(cmd, &renderInfo);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-    vkCmdEndRendering(cmd);
-}
-
-void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
-{
-    mStats.drawcall_count = 0;
-    mStats.triangle_count = 0;
-    auto start = std::chrono::system_clock::now();
-
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(mDrawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
-    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(mDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    const VkRenderingInfo renderInfo = vkinit::rendering_info(mDrawExtent, &colorAttachment, &depthAttachment);
-
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    // Push constants of Vertex, Instance, and Scene data buffer addresses
-    SSBOAddresses pushConstants;
-    VkBufferDeviceAddressInfo deviceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = mIndirectVertexBuffer.buffer };
-    pushConstants.vertexBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
-    deviceAddressInfo.buffer = mInstanceBuffer.buffer;
-    pushConstants.instanceBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
-    deviceAddressInfo.buffer = mSceneBuffer.buffer;
-    pushConstants.sceneBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
-
-    // Index buffer of all models in the scene
-    vkCmdBindIndexBuffer(cmd, mIndirectIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-    for (const auto& indirectBatch : mIndirectBatches) {
-        PbrMaterial* currentMaterial = indirectBatch.first;
-
-        update_material_buffer(*currentMaterial);
-        update_material_texture_array(*currentMaterial);
-        deviceAddressInfo.buffer = mMaterialConstantsBuffer.buffer;
-        pushConstants.materialsBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
-
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline); // TODO Check for same pipeline in previous loop
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArrayDescriptorSet, 0, nullptr);
-        vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
-
-        // Set dynamic viewport
-        VkViewport viewport = {};
-        viewport.x = 0;
-        viewport.y = 0;
-        viewport.width = static_cast<float>(mDrawExtent.width);
-        viewport.height = static_cast<float>(mDrawExtent.height);
-        viewport.minDepth = 0.f;
-        viewport.maxDepth = 1.f;
-        vkCmdSetViewport(cmd, 0, 1, &viewport);
-        // Set dynamic scissor
-        VkRect2D scissor = {};
-        scissor.offset.x = 0;
-        scissor.offset.y = 0;
-        scissor.extent.width = mDrawExtent.width;
-        scissor.extent.height = mDrawExtent.height;
-        vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-        vkCmdDrawIndexedIndirect(cmd, mIndirectBuffers[currentMaterial].buffer, 0, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
-
-        mStats.drawcall_count++;
-    }
-
-    vkCmdEndRendering(cmd);
-
-    auto end = std::chrono::system_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    mStats.mesh_draw_time = static_cast<float>(elapsed.count()) / 1000.f;
 }
 
 void VulkanEngine::create_vertex_index_buffers()
@@ -784,16 +704,18 @@ void VulkanEngine::create_vertex_index_buffers()
     int totalIndexSize = 0;
     for (const auto& model : mLoadedModels | std::views::values) {
         for (const auto& mesh : model->mMeshes | std::views::values) {
-            totalVertexSize += mesh->meshBuffers.vertexBuffer.info.size;
-            totalIndexSize += mesh->meshBuffers.indexBuffer.info.size;
+            for (auto& primitive : mesh->primitives) {
+                totalVertexSize += primitive.vertexBuffer.info.size;
+                totalIndexSize += primitive.indexBuffer.info.size;
+            }
         }
     }
     mIndirectVertexBuffer = create_buffer(totalVertexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.perDrawBuffers);
     mIndirectIndexBuffer = create_buffer(totalIndexSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, get_current_frame().mFrameDeletionQueue.bufferDeletion);
 }
 
-void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int vertexOffset,
-    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int indexOffset)
+void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
+    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset)
 {
     VkBufferCopy vertexCopy {};
     vertexCopy.dstOffset = vertexOffset;
@@ -803,6 +725,9 @@ void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, Alloca
     indexCopy.dstOffset = indexOffset;
     indexCopy.srcOffset = 0;
     indexCopy.size = srcIndex.info.size;
+
+    vertexOffset += srcVertex.info.size;
+    indexOffset += srcIndex.info.size;
 
     immediate_submit([&](const VkCommandBuffer cmd) {
         vkCmdCopyBuffer(cmd, srcVertex.buffer, dstVertex.buffer, 1, &vertexCopy);
@@ -828,8 +753,6 @@ void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesO
 
 void VulkanEngine::iterate_primitives()
 {
-    // TODO Update the index buffer data to add the total number of vertices already in the vertex buffer data to each integer index
-
     int currentVertexOffset = 0;
     int currentIndexOffset = 0;
     int totalVertices = 0;
@@ -838,15 +761,12 @@ void VulkanEngine::iterate_primitives()
 
     for (const auto& model : mLoadedModels | std::views::values) {
         for (const auto& mesh : model->mMeshes | std::views::values) {
-            update_vertex_index_buffers(mesh->meshBuffers.vertexBuffer, mIndirectVertexBuffer, currentVertexOffset, mesh->meshBuffers.indexBuffer, mIndirectIndexBuffer, currentIndexOffset);
             for (auto& primitive : mesh->primitives) {
+                update_vertex_index_buffers(primitive.vertexBuffer, mIndirectVertexBuffer, currentVertexOffset, primitive.indexBuffer, mIndirectIndexBuffer, currentIndexOffset);
                 update_indirect_commands(primitive, totalVertices, totalIndices, totalPrimitives);
             }
-            currentVertexOffset += mesh->meshBuffers.vertexBuffer.info.size;
-            currentIndexOffset += mesh->meshBuffers.indexBuffer.info.size;
         }
     }
-
 }
 
 void VulkanEngine::update_indirect_batches()
@@ -877,11 +797,9 @@ void VulkanEngine::update_instanced_data()
     std::vector<InstanceData> instanceData;
     instanceData.resize(objectCount);
     for (int i = 0; i < objectCount; i++) {
-        const int column = i / 100;
-        const int row = i % 100;
-        instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { column, 0, row });
+        instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { 0, 0, 0 });
         instanceData[i].rotation = glm::toMat4(rotation(glm::vec3(), glm::vec3()));
-        instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 0.2f });
+        instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 1.f });
     }
 
     const auto instanceDataSize = instanceData.size() * sizeof(InstanceData);
@@ -979,96 +897,79 @@ void VulkanEngine::update_scene()
     mStats.scene_update_time = static_cast<float>(elapsed.count()) / 1000.f;
 }
 
-void VulkanEngine::cleanup_immediate()
+void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const
 {
-    mImmediateDeletionQueue.fences.flush();
-    mImmediateDeletionQueue.commandPools.flush();
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+    const VkRenderingInfo renderInfo = vkinit::rendering_info(mSwapchainExtent, &colorAttachment, nullptr);
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    vkCmdEndRendering(cmd);
 }
 
-void VulkanEngine::cleanup_swapchain()
+void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
-    destroy_swapchain();
-}
+    mStats.drawcall_count = 0;
+    mStats.triangle_count = 0;
+    auto start = std::chrono::system_clock::now();
 
-void VulkanEngine::cleanup_descriptors()
-{
-    mGlobalDescriptorAllocator.destroy_pools(mDevice);
-    mDescriptorDeletionQueue.descriptorSetLayouts.flush();
-}
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(mDrawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(mDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    const VkRenderingInfo renderInfo = vkinit::rendering_info(mDrawExtent, &colorAttachment, &depthAttachment);
 
-void VulkanEngine::cleanup_pipeline_caches()
-{
-    write_pipeline_cache(pipelineCacheFile);
-    vkDestroyPipelineCache(mDevice, mPipelineCache, nullptr);
-}
+    vkCmdBeginRendering(cmd, &renderInfo);
 
-void VulkanEngine::cleanup_pipelines()
-{
-    mPipelineDeletionQueue.pipelines.flush();
-    mPipelineDeletionQueue.pipelineLayouts.flush();
-}
+    // Push constants of Vertex, Instance, and Scene data buffer addresses
+    SSBOAddresses pushConstants;
+    VkBufferDeviceAddressInfo deviceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = mIndirectVertexBuffer.buffer };
+    pushConstants.vertexBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
+    deviceAddressInfo.buffer = mInstanceBuffer.buffer;
+    pushConstants.instanceBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
+    deviceAddressInfo.buffer = mSceneBuffer.buffer;
+    pushConstants.sceneBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
 
-void VulkanEngine::cleanup_samplers()
-{
-    mSamplerDeletionQueue.samplers.flush();
-}
+    // Index buffer of all models in the scene
+    vkCmdBindIndexBuffer(cmd, mIndirectIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-void VulkanEngine::cleanup_images()
-{
-    mImageDeletionQueue.images.flush();
-    mImageDeletionQueue.imageViews.flush();
-}
+    for (const auto& indirectBatch : mIndirectBatches) {
+        PbrMaterial* currentMaterial = indirectBatch.first;
 
-void VulkanEngine::cleanup_buffers()
-{
-    mBufferDeletionQueue.genericBuffers.flush();
-    mBufferDeletionQueue.perDrawBuffers.flush();
-    mBufferDeletionQueue.tempBuffers.flush();
-}
+        update_material_buffer(*currentMaterial);
+        update_material_texture_array(*currentMaterial);
+        deviceAddressInfo.buffer = mMaterialConstantsBuffer.buffer;
+        pushConstants.materialsBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
 
-void VulkanEngine::cleanup_imgui() const
-{
-    vkDestroyDescriptorPool(mDevice, mImguiDescriptorPool, nullptr);
-    ImGui_ImplVulkan_Shutdown();
-}
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline); // TODO Check for same pipeline in previous loop
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArrayDescriptorSet, 0, nullptr);
+        vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
-void VulkanEngine::cleanup_misc() const
-{
-    vkDestroySurfaceKHR(mInstance, mSurface, nullptr);
-    vkb::destroy_debug_utils_messenger(mInstance, mDebugMessenger);
-}
+        // Set dynamic viewport
+        VkViewport viewport = {};
+        viewport.x = 0;
+        viewport.y = 0;
+        viewport.width = static_cast<float>(mDrawExtent.width);
+        viewport.height = static_cast<float>(mDrawExtent.height);
+        viewport.minDepth = 0.f;
+        viewport.maxDepth = 1.f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        // Set dynamic scissor
+        VkRect2D scissor = {};
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+        scissor.extent.width = mDrawExtent.width;
+        scissor.extent.height = mDrawExtent.height;
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-void VulkanEngine::cleanup_core() const
-{
-    vmaDestroyAllocator(mAllocator);
-    vkDestroyDevice(mDevice, nullptr);
-    vkDestroyInstance(mInstance, nullptr);
-    SDL_DestroyWindow(mWindow);
-}
+        vkCmdDrawIndexedIndirect(cmd, mIndirectBuffers[currentMaterial].buffer, 0, indirectBatch.second.size(), sizeof(indirectBatch.second[0]));
 
-void VulkanEngine::cleanup()
-{
-    if (mIsInitialized) {
-        vkDeviceWaitIdle(mDevice);
-
-        // GLTF scenes cleared by own destructor.
-        mLoadedModels.clear();
-        for (FrameData& frame : mFrames)
-            frame.cleanup(mDevice);
-        cleanup_immediate();
-        cleanup_swapchain();
-        cleanup_descriptors();
-        cleanup_pipelines();
-        cleanup_samplers();
-        cleanup_images();
-        cleanup_buffers();
-        cleanup_imgui();
-        cleanup_misc();
-        cleanup_core();
-
-        // Clear engine pointer
-        loadedEngine = nullptr;
+        mStats.drawcall_count++;
     }
+
+    vkCmdEndRendering(cmd);
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    mStats.mesh_draw_time = static_cast<float>(elapsed.count()) / 1000.f;
 }
 
 void VulkanEngine::draw()
@@ -1282,4 +1183,96 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& f
 
     VK_CHECK(vkQueueSubmit2(mGraphicsQueue, 1, &submit, mImmFence));
     VK_CHECK(vkWaitForFences(mDevice, 1, &mImmFence, true, 9999999999));
+}
+
+void VulkanEngine::cleanup_immediate()
+{
+    mImmediateDeletionQueue.fences.flush();
+    mImmediateDeletionQueue.commandPools.flush();
+}
+
+void VulkanEngine::cleanup_swapchain()
+{
+    destroy_swapchain();
+}
+
+void VulkanEngine::cleanup_descriptors()
+{
+    mGlobalDescriptorAllocator.destroy_pools(mDevice);
+    mDescriptorDeletionQueue.descriptorSetLayouts.flush();
+}
+
+void VulkanEngine::cleanup_pipeline_caches()
+{
+    write_pipeline_cache(pipelineCacheFile);
+    vkDestroyPipelineCache(mDevice, mPipelineCache, nullptr);
+}
+
+void VulkanEngine::cleanup_pipelines()
+{
+    mPipelineDeletionQueue.pipelines.flush();
+    mPipelineDeletionQueue.pipelineLayouts.flush();
+}
+
+void VulkanEngine::cleanup_samplers()
+{
+    mSamplerDeletionQueue.samplers.flush();
+}
+
+void VulkanEngine::cleanup_images()
+{
+    mImageDeletionQueue.images.flush();
+    mImageDeletionQueue.imageViews.flush();
+}
+
+void VulkanEngine::cleanup_buffers()
+{
+    mBufferDeletionQueue.genericBuffers.flush();
+    mBufferDeletionQueue.perDrawBuffers.flush();
+    mBufferDeletionQueue.tempBuffers.flush();
+}
+
+void VulkanEngine::cleanup_imgui() const
+{
+    vkDestroyDescriptorPool(mDevice, mImguiDescriptorPool, nullptr);
+    ImGui_ImplVulkan_Shutdown();
+}
+
+void VulkanEngine::cleanup_misc() const
+{
+    vkDestroySurfaceKHR(mInstance, mSurface, nullptr);
+    vkb::destroy_debug_utils_messenger(mInstance, mDebugMessenger);
+}
+
+void VulkanEngine::cleanup_core() const
+{
+    vmaDestroyAllocator(mAllocator);
+    vkDestroyDevice(mDevice, nullptr);
+    vkDestroyInstance(mInstance, nullptr);
+    SDL_DestroyWindow(mWindow);
+}
+
+void VulkanEngine::cleanup()
+{
+    if (mIsInitialized) {
+        vkDeviceWaitIdle(mDevice);
+
+        // GLTF scenes cleared by own destructor.
+        mLoadedModels.clear();
+        for (FrameData& frame : mFrames)
+            frame.cleanup(mDevice);
+        cleanup_immediate();
+        cleanup_swapchain();
+        cleanup_descriptors();
+        cleanup_pipelines();
+        cleanup_samplers();
+        cleanup_images();
+        cleanup_buffers();
+        cleanup_imgui();
+        cleanup_misc();
+        cleanup_core();
+
+        // Clear engine pointer
+        loadedEngine = nullptr;
+    }
 }

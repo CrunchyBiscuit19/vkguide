@@ -98,7 +98,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             file.mImages[image.name.c_str()] = *img;
         } else {
             // Failed to load -> default checkerboard texture
-            images.push_back(engine->mStockImages["errorCheckerboard"]);
+            images.push_back(engine->mStockImages["grey"]);
             std::cout << "gltf failed to load texture " << image.name << std::endl;
         }
     }
@@ -171,34 +171,29 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     }
 
     // Load meshes
-    // Use the same vectors for all meshes so that the memory doesnt reallocate as often
-    std::vector<uint32_t> indices;
-    std::vector<Vertex> vertices;
     for (fastgltf::Mesh& mesh : gltf.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
         meshes.push_back(newmesh);
         file.mMeshes[mesh.name.c_str()] = newmesh;
         newmesh->name = mesh.name;
 
-        // Clear the mesh arrays each mesh, we dont want to merge them by error
-        indices.clear();
-        vertices.clear();
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
             Primitive newPrimitive;
-            newPrimitive.firstIndex = static_cast<uint32_t>(indices.size());
+            newPrimitive.firstIndex = 0;
             newPrimitive.indexCount = static_cast<uint32_t>(gltf.accessors[p.indicesAccessor.value()].count);
 
-            size_t initialVerticesSize = vertices.size();
+            std::vector<uint32_t> primitiveIndices;
+            std::vector<Vertex> primitiveVertices;
+
             // Load indexes
             {
                 // Add the indices of current primitive to the previous ones
                 fastgltf::Accessor& indexaccessor = gltf.accessors[p.indicesAccessor.value()];
-                indices.reserve(indices.size() + indexaccessor.count);
+                primitiveIndices.reserve(indexaccessor.count);
                 fastgltf::iterateAccessor<std::uint32_t>(gltf, indexaccessor,
                     [&](std::uint32_t idx) {
-                        // Add the vertices vector size so indices would reference vertices of current primitive instead of first set of vertices added
-                        indices.push_back(idx);
+                        primitiveIndices.push_back(idx);
                     });
             }
 
@@ -206,7 +201,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             {
                 // Add the vertices of current primitive to the previous ones
                 fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
-                vertices.resize(vertices.size() + posAccessor.count);
+                primitiveVertices.resize(posAccessor.count);
                 newPrimitive.vertexCount = posAccessor.count;
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor, // Default all the params
                     [&](glm::vec3 v, size_t index) {
@@ -215,7 +210,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                         newvtx.normal = { 1, 0, 0 };
                         newvtx.uv_x = 0;
                         newvtx.uv_y = 0;
-                        vertices[initialVerticesSize + index] = newvtx;
+                        primitiveVertices[index] = newvtx;
                     });
             }
 
@@ -224,7 +219,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             if (normals != p.attributes.end()) {
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->second],
                     [&](glm::vec3 v, size_t index) {
-                        vertices[initialVerticesSize + index].normal = v;
+                        primitiveVertices[index].normal = v;
                     });
             }
 
@@ -233,8 +228,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
             if (uv != p.attributes.end()) {
                 fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[uv->second],
                     [&](glm::vec2 v, size_t index) {
-                        vertices[initialVerticesSize + index].uv_x = v.x;
-                        vertices[initialVerticesSize + index].uv_y = v.y;
+                        primitiveVertices[index].uv_x = v.x;
+                        primitiveVertices[index].uv_y = v.y;
                     });
             }
 
@@ -244,21 +239,23 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                 newPrimitive.material = materials[0];
 
             // Loop the vertices of this surface, find min/max bounds
-            glm::vec3 minpos = vertices[initialVerticesSize].position;
-            glm::vec3 maxpos = vertices[initialVerticesSize].position;
-            for (int i = initialVerticesSize; i < vertices.size(); i++) {
-                minpos = glm::min(minpos, vertices[i].position);
-                maxpos = glm::max(maxpos, vertices[i].position);
+            glm::vec3 minpos = primitiveVertices[0].position;
+            glm::vec3 maxpos = primitiveVertices[0].position;
+            for (int i = 0; i < primitiveVertices.size(); i++) {
+                minpos = glm::min(minpos, primitiveVertices[i].position);
+                maxpos = glm::max(maxpos, primitiveVertices[i].position);
             }
-            // Calculate origin and extents from the min/max, use extent lenght for radius
+            // Calculate origin and extents from the min/max, use extent length for radius
             newPrimitive.bounds.origin = (maxpos + minpos) / 2.f;
             newPrimitive.bounds.extents = (maxpos - minpos) / 2.f;
             newPrimitive.bounds.sphereRadius = glm::length(newPrimitive.bounds.extents);
 
+            newPrimitive.indices = primitiveIndices;
+            newPrimitive.vertices = primitiveVertices;
+
+            engine->upload_primitive(newPrimitive, primitiveIndices, primitiveVertices);
             newmesh->primitives.push_back(newPrimitive);
         }
-
-        newmesh->meshBuffers = engine->upload_mesh(indices, vertices);
     }
 
     // Load all nodes and their meshes

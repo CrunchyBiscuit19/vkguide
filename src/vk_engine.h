@@ -203,14 +203,11 @@ public:
     AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     void destroy_image(const AllocatedImage& img);
 
-    MeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-
-    void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
-    void draw_geometry(VkCommandBuffer cmd);
+    void upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices);
 
     void create_vertex_index_buffers();
-    void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int vertexOffset,
-    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int indexOffset);
+    void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
+        AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset);
     void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
     void iterate_primitives();
     void update_indirect_batches();
@@ -219,6 +216,14 @@ public:
     void update_material_buffer(PbrMaterial& material);
     void update_material_texture_array(PbrMaterial& material);
     void update_scene();
+
+    void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
+    void draw_geometry(VkCommandBuffer cmd);
+    void draw(); // draw loop
+
+    void run(); // run main loop
+
+    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 
     void cleanup_immediate();
     void cleanup_swapchain();
@@ -232,9 +237,4 @@ public:
     void cleanup_misc() const;
     void cleanup_core() const;
     void cleanup(); // shuts down the engine
-
-    void draw(); // draw loop
-    void run(); // run main loop
-
-    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 };

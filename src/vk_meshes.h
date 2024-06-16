@@ -15,6 +15,12 @@ struct Primitive {
     uint32_t firstIndex;
     uint32_t indexCount;
     uint32_t vertexCount;
+
+    AllocatedBuffer indexBuffer;
+    std::vector<uint32_t> indices;
+    AllocatedBuffer vertexBuffer;
+    std::vector<Vertex> vertices;
+
     std::shared_ptr<PbrMaterial> material;
     Bounds bounds;
 };
@@ -34,17 +40,9 @@ struct Node {
     virtual ~Node() = default;
 };
 
-struct MeshBuffers {
-    AllocatedBuffer indexBuffer;
-    int indexCount;
-    AllocatedBuffer vertexBuffer;
-    int vertexCount;
-};
-
 struct MeshData {
     std::string name;
     std::vector<Primitive> primitives; // Mesh primitives, one material per primitve
-    MeshBuffers meshBuffers;
 };
 
 struct MeshNode : Node {
