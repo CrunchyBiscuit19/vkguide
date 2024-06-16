@@ -23,11 +23,11 @@ struct Primitive {
 // The scene node can hold children and will also keep a transform to propagate to them (ie all children nodes also get transformed).
 struct Node {
     // Parent pointer must be a weak pointer to avoid circular dependencies
-    std::weak_ptr<Node> parent;
-    std::vector<std::shared_ptr<Node>> children;
+    std::weak_ptr<Node> mParent;
+    std::vector<std::shared_ptr<Node>> mChildren;
 
-    glm::mat4 localTransform; // Original file data
-    glm::mat4 worldTransform; // Modified transform to whole model
+    glm::mat4 mLocalTransform; // Original file data
+    glm::mat4 mWorldTransform; // Modified transform to whole model
 
     void refreshTransform(const glm::mat4& parentMatrix);
 

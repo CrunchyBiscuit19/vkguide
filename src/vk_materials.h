@@ -39,11 +39,11 @@ struct MaterialPipeline {
 };
 
 class PbrMaterial {
-    VulkanEngine* engine;
+    VulkanEngine* mEngine;
 
 public:
-    MaterialPipeline pipeline;
-    PbrData data;
+    MaterialPipeline mPipeline;
+    PbrData mData;
 
     PbrMaterial(VulkanEngine* engine);
 

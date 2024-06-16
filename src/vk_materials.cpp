@@ -3,11 +3,11 @@
 #include <vk_pipelines.h>
 #include <vk_materials.h>
 
-PbrMaterial::PbrMaterial(VulkanEngine* engine): engine(engine)
+PbrMaterial::PbrMaterial(VulkanEngine* engine): mEngine(engine)
 {
 }
 
 void PbrMaterial::create_material()
 {
-    pipeline = engine->create_pipeline(data.doubleSided, data.alphaMode);
+    mPipeline = mEngine->create_pipeline(mData.doubleSided, mData.alphaMode);
 }

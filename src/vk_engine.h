@@ -23,158 +23,157 @@ struct EngineStats {
 };
 
 struct FrameData {
-    VkCommandPool _commandPool;
-    VkCommandBuffer _mainCommandBuffer;
+    VkCommandPool mCommandPool;
+    VkCommandBuffer mMainCommandBuffer;
 
-    VkSemaphore _swapchainSemaphore, _renderSemaphore;
-    VkFence _renderFence;
+    VkSemaphore mSwapchainSemaphore, mRenderSemaphore;
+    VkFence mRenderFence;
 
-    DescriptorAllocatorGrowable _frameDescriptors;
+    DescriptorAllocatorGrowable mFrameDescriptors;
 
     struct FrameDeletionQueue {
         DeletionQueue<VkFence> fenceDeletion;
         DeletionQueue<VkSemaphore> semaphoreDeletion;
         DeletionQueue<VkCommandPool> commandPoolDeletion;
         DeletionQueue<VkBuffer> bufferDeletion;
-    } _frameDeletionQueue;
+    } mFrameDeletionQueue;
 
     void cleanup(VkDevice device)
     {
-        _frameDeletionQueue.fenceDeletion.flush();
-        _frameDeletionQueue.semaphoreDeletion.flush();
-        _frameDeletionQueue.commandPoolDeletion.flush();
-        _frameDeletionQueue.bufferDeletion.flush();
-        _frameDescriptors.destroy_pools(device);
+        mFrameDeletionQueue.fenceDeletion.flush();
+        mFrameDeletionQueue.semaphoreDeletion.flush();
+        mFrameDeletionQueue.commandPoolDeletion.flush();
+        mFrameDeletionQueue.bufferDeletion.flush();
+        mFrameDescriptors.destroy_pools(device);
     }
 };
 
 class VulkanEngine {
 public:
     // Engine state
-    bool _isInitialized { false };
-    bool _stopRendering { false };
+    bool mIsInitialized { false };
+    bool mStopRendering { false };
 
     // Stats
-    EngineStats stats;
-    CVarSystem* cvarInstance { CVarSystem::Get() };
+    EngineStats mStats;
 
     // Window object
-    SDL_Window* _window { nullptr };
-    VkExtent2D _windowExtent { 1700, 900 };
-    float _renderScale { 1.0f };
+    SDL_Window* mWindow { nullptr };
+    VkExtent2D mWindowExtent { 1700, 900 };
+    float mRenderScale { 1.0f };
 
     // Vulkan stuff
-    VkInstance _instance; // Vulkan library handle
-    VkDebugUtilsMessengerEXT _debugMessenger; // Vulkan debug output handle
+    VkInstance mInstance; // Vulkan library handle
+    VkDebugUtilsMessengerEXT mDebugMessenger; // Vulkan debug output handle
 
-    VkPhysicalDevice _chosenGPU; // GPU chosen as the default device
-    VkDevice _device; // Vulkan device for commands
-    VkSurfaceKHR _surface; // Vulkan window surface
+    VkPhysicalDevice mChosenGPU; // GPU chosen as the default device
+    VkDevice mDevice; // Vulkan device for commands
+    VkSurfaceKHR mSurface; // Vulkan window surface
 
-    VkQueue _graphicsQueue;
-    uint32_t _graphicsQueueFamily;
+    VkQueue mGraphicsQueue;
+    uint32_t mGraphicsQueueFamily;
 
     // Frames
-    int _frameNumber { 0 };
-    FrameData _frames[FRAME_OVERLAP];
-    FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
-    FrameData& get_previous_frame() { return _frames[(_frameNumber - 1) % FRAME_OVERLAP]; }
+    int mFrameNumber { 0 };
+    FrameData mFrames[FRAME_OVERLAP];
+    FrameData& get_current_frame() { return mFrames[mFrameNumber % FRAME_OVERLAP]; }
+    FrameData& get_previous_frame() { return mFrames[(mFrameNumber - 1) % FRAME_OVERLAP]; }
 
     // VMA
-    VmaAllocator _allocator;
+    VmaAllocator mAllocator;
 
     // Descriptor allocator
-    DescriptorAllocatorGrowable _globalDescriptorAllocator;
+    DescriptorAllocatorGrowable mGlobalDescriptorAllocator;
 
     // Swapchain
-    VkSwapchainKHR _swapchain;
-    VkFormat _swapchainImageFormat;
-    VkExtent2D _swapchainExtent;
-    std::vector<VkImage> _swapchainImages;
-    std::vector<VkImageView> _swapchainImageViews;
-    bool _resize_requested;
+    VkSwapchainKHR mSwapchain;
+    VkFormat mSwapchainImageFormat;
+    VkExtent2D mSwapchainExtent;
+    std::vector<VkImage> mSwapchainImages;
+    std::vector<VkImageView> mSwapchainImageViews;
+    bool mResizeRequested;
 
     // Pipeline things
-    std::vector<char> pipelineCacheData;
-    VkPipelineCache pipelineCache;
-    std::unordered_map<std::size_t, MaterialPipeline> pipelinesCreated;
+    std::vector<char> mPipelineCacheData;
+    VkPipelineCache mPipelineCache;
+    std::unordered_map<std::size_t, MaterialPipeline> mPipelinesCreated;
 
     // Images
-    std::unordered_map<std::string, AllocatedImage> _stockImages;
-    VkDescriptorSetLayout _stockImageDescriptorLayout;
+    std::unordered_map<std::string, AllocatedImage> mStockImages;
+    VkDescriptorSetLayout mStockImageDescriptorLayout;
 
-    AllocatedImage _drawImage; // Drawn images before copying to swapchain
-    VkDescriptorSetLayout _drawImageDescriptorLayout;
-    VkDescriptorSet _drawImageDescriptors;
-    VkExtent2D _drawExtent;
+    AllocatedImage mDrawImage; // Drawn images before copying to swapchain
+    VkDescriptorSetLayout mDrawImageDescriptorLayout;
+    VkDescriptorSet mDrawImageDescriptors;
+    VkExtent2D mDrawExtent;
 
-    AllocatedImage _depthImage;
+    AllocatedImage mDepthImage;
 
     // Draw indirect-related
-    AllocatedBuffer indirectVertexBuffer;
-    AllocatedBuffer indirectIndexBuffer;
+    AllocatedBuffer mIndirectVertexBuffer;
+    AllocatedBuffer mIndirectIndexBuffer;
     // For each material, add to it the associated primitives
-    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> indirectBatches;
-    std::unordered_map<PbrMaterial*, AllocatedBuffer> indirectBuffers;
-    AllocatedBuffer instanceBuffer;
+    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectBatches;
+    std::unordered_map<PbrMaterial*, AllocatedBuffer> mIndirectBuffers;
+    AllocatedBuffer mInstanceBuffer;
 
     // Scene data
-    SceneData sceneData;
-    AllocatedBuffer sceneBuffer;
+    SceneData mSceneData;
+    AllocatedBuffer mSceneBuffer;
 
     // Models and materials
-    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedModels;
-    AllocatedBuffer materialConstantsBuffer;
-    VkDescriptorSetLayout materialTexturesArraySetLayout;
-    VkDescriptorSet materialTexturesArrayDescriptorSet;
+    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> mLoadedModels;
+    AllocatedBuffer mMaterialConstantsBuffer;
+    VkDescriptorSetLayout mMaterialTexturesArraySetLayout;
+    VkDescriptorSet mMaterialTexturesArrayDescriptorSet;
 
     // Samplers
-    VkSampler _defaultSamplerLinear;
-    VkSampler _defaultSamplerNearest;
+    VkSampler mDefaultSamplerLinear;
+    VkSampler mDefaultSamplerNearest;
 
     // Camera
-    Camera mainCamera;
+    Camera mMainCamera;
 
     // Immediate submit
-    VkFence _immFence;
-    VkCommandBuffer _immCommandBuffer;
-    VkCommandPool _immCommandPool;
-    VkDescriptorPool _imguiDescriptorPool;
+    VkFence mImmFence;
+    VkCommandBuffer mImmCommandBuffer;
+    VkCommandPool mImmCommandPool;
+    VkDescriptorPool mImguiDescriptorPool;
 
     // Deletion queues
     struct SwapchainDeletionQueue {
         DeletionQueue<VkSwapchainKHR> swapchains;
         DeletionQueue<VkImageView> imageViews;
-    } _swapchainDeletionQueue;
+    } mSwapchainDeletionQueue;
 
     struct SamplerDeletionQueue {
         DeletionQueue<VkSampler> samplers;
-    } _samplerDeletionQueue;
+    } mSamplerDeletionQueue;
 
     struct ImmediateDeletionQueue {
         DeletionQueue<VkFence> fences;
         DeletionQueue<VkCommandPool> commandPools;
-    } _immediateDeletionQueue;
+    } mImmediateDeletionQueue;
 
     struct PipelineDeletionQueue {
         DeletionQueue<VkPipeline> pipelines;
         DeletionQueue<VkPipelineLayout> pipelineLayouts;
-    } _pipelineDeletionQueue;
+    } mPipelineDeletionQueue;
 
     struct BufferDeletionQueue {
         DeletionQueue<VkBuffer> genericBuffers;
         DeletionQueue<VkBuffer> perDrawBuffers;
         DeletionQueue<VkBuffer> tempBuffers;
-    } _bufferDeletionQueue;
+    } mBufferDeletionQueue;
 
     struct DescriptorDeletionQueue {
         DeletionQueue<VkDescriptorSetLayout> descriptorSetLayouts;
-    } _descriptorDeletionQueue;
+    } mDescriptorDeletionQueue;
 
     struct ImageDeletionQueue {
         DeletionQueue<VkImage> images;
         DeletionQueue<VkImageView> imageViews;
-    } _imageDeletionQueue;
+    } mImageDeletionQueue;
 
     static VulkanEngine& Get();
     void init(); // initializes everything in the engine

@@ -5,7 +5,7 @@
 
 struct DescriptorLayoutBuilder {
 
-    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    std::vector<VkDescriptorSetLayoutBinding> mBindings;
 
     void add_binding(uint32_t binding, VkDescriptorType type, uint32_t count = 1);
     void clear();
@@ -29,16 +29,16 @@ private:
     VkDescriptorPool get_pool(VkDevice device);
     static VkDescriptorPool create_pool(VkDevice device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
 
-    std::vector<PoolSizeRatio> ratios;
-    std::vector<VkDescriptorPool> fullPools;
-    std::vector<VkDescriptorPool> readyPools;
-    uint32_t setsPerPool = 0;
+    std::vector<PoolSizeRatio> mRatios;
+    std::vector<VkDescriptorPool> mFullPools;
+    std::vector<VkDescriptorPool> mReadyPools;
+    uint32_t mSetsPerPool = 0;
 };
 
 struct DescriptorWriter {
-    std::deque<VkDescriptorImageInfo> imageInfos; // Deques are guaranteed to keep pointers to elements valid
-    std::deque<VkDescriptorBufferInfo> bufferInfos;
-    std::vector<VkWriteDescriptorSet> writes;
+    std::deque<VkDescriptorImageInfo> mImageInfos; // Deques are guaranteed to keep pointers to elements valid
+    std::deque<VkDescriptorBufferInfo> mBufferInfos;
+    std::vector<VkWriteDescriptorSet> mWrites;
 
     void write_image(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
     void write_image_array(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type, uint32_t arrayIndex);

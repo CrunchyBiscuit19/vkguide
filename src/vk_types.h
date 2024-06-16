@@ -168,12 +168,6 @@ struct InstanceData {
     glm::mat4 scale;
 };
 
-struct IndirectBatch {
-    MeshData* mesh;
-    PbrData* material;
-    VkDrawIndexedIndirectCommand indirectCommand;
-};
-
 #define VK_CHECK(x)                                                          \
     do {                                                                     \
         VkResult err = x;                                                    \

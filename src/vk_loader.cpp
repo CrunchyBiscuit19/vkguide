@@ -53,7 +53,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     std::filesystem::path path = filePath;
 
     std::shared_ptr<LoadedGLTF> scene = std::make_shared<LoadedGLTF>();
-    scene->creator = engine;
+    scene->mEngine = engine;
     LoadedGLTF& file = *scene;
 
     // Load data
@@ -80,8 +80,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         sampl.mipmapMode = extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
         VkSampler newSampler;
-        vkCreateSampler(engine->_device, &sampl, nullptr, &newSampler);
-        file.samplers.push_back(newSampler);
+        vkCreateSampler(engine->mDevice, &sampl, nullptr, &newSampler);
+        file.mSamplers.push_back(newSampler);
     }
 
     // Temporal arrays for all the objects to use while creating the GLTF data
@@ -95,10 +95,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     for (fastgltf::Image& image : gltf.images) {
         if (std::optional<AllocatedImage> img = load_image(engine, gltf, image); img.has_value()) {
             images.push_back(*img);
-            file.images[image.name.c_str()] = *img;
+            file.mImages[image.name.c_str()] = *img;
         } else {
             // Failed to load -> default checkerboard texture
-            images.push_back(engine->_stockImages["errorCheckerboard"]);
+            images.push_back(engine->mStockImages["errorCheckerboard"]);
             std::cout << "gltf failed to load texture " << image.name << std::endl;
         }
     }
@@ -107,63 +107,63 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     for (fastgltf::Material& mat : gltf.materials) {
         std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
         materials.push_back(newMat);
-        file.materials[mat.name.c_str()] = newMat;
+        file.mMaterials[mat.name.c_str()] = newMat;
 
-        newMat->data.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
-        newMat->data.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
-        newMat->data.constants.baseFactor.z = mat.pbrData.baseColorFactor[2];
-        newMat->data.constants.baseFactor.w = mat.pbrData.baseColorFactor[3];
-        newMat->data.constants.metallicFactor = mat.pbrData.metallicFactor;
-        newMat->data.constants.roughnessFactor = mat.pbrData.roughnessFactor;
-        newMat->data.constants.emissiveFactor.x = mat.emissiveFactor[0];
-        newMat->data.constants.emissiveFactor.y = mat.emissiveFactor[1];
-        newMat->data.constants.emissiveFactor.z = mat.emissiveFactor[2];
+        newMat->mData.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
+        newMat->mData.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
+        newMat->mData.constants.baseFactor.z = mat.pbrData.baseColorFactor[2];
+        newMat->mData.constants.baseFactor.w = mat.pbrData.baseColorFactor[3];
+        newMat->mData.constants.metallicFactor = mat.pbrData.metallicFactor;
+        newMat->mData.constants.roughnessFactor = mat.pbrData.roughnessFactor;
+        newMat->mData.constants.emissiveFactor.x = mat.emissiveFactor[0];
+        newMat->mData.constants.emissiveFactor.y = mat.emissiveFactor[1];
+        newMat->mData.constants.emissiveFactor.z = mat.emissiveFactor[2];
 
-        newMat->data.alphaMode = mat.alphaMode;
-        newMat->data.doubleSided = mat.doubleSided;
+        newMat->mData.alphaMode = mat.alphaMode;
+        newMat->mData.doubleSided = mat.doubleSided;
 
         // Default the material textures
-        newMat->data.resources.base.image = engine->_stockImages["white"];
-        newMat->data.resources.base.sampler = engine->_defaultSamplerLinear;
-        newMat->data.resources.metallicRoughness.image = engine->_stockImages["white"];
-        newMat->data.resources.metallicRoughness.sampler = engine->_defaultSamplerLinear;
-        newMat->data.resources.normal.image = engine->_stockImages["white"];
-        newMat->data.resources.normal.sampler = engine->_defaultSamplerLinear;
-        newMat->data.resources.occlusion.image = engine->_stockImages["white"];
-        newMat->data.resources.occlusion.sampler = engine->_defaultSamplerLinear;
-        newMat->data.resources.emissive.image = engine->_stockImages["white"];
-        newMat->data.resources.emissive.sampler = engine->_defaultSamplerLinear;
+        newMat->mData.resources.base.image = engine->mStockImages["white"];
+        newMat->mData.resources.base.sampler = engine->mDefaultSamplerLinear;
+        newMat->mData.resources.metallicRoughness.image = engine->mStockImages["white"];
+        newMat->mData.resources.metallicRoughness.sampler = engine->mDefaultSamplerLinear;
+        newMat->mData.resources.normal.image = engine->mStockImages["white"];
+        newMat->mData.resources.normal.sampler = engine->mDefaultSamplerLinear;
+        newMat->mData.resources.occlusion.image = engine->mStockImages["white"];
+        newMat->mData.resources.occlusion.sampler = engine->mDefaultSamplerLinear;
+        newMat->mData.resources.emissive.image = engine->mStockImages["white"];
+        newMat->mData.resources.emissive.sampler = engine->mDefaultSamplerLinear;
 
         // Grab textures from gltf file
         if (mat.pbrData.baseColorTexture.has_value()) {
             size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
             size_t sampler = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value();
-            newMat->data.resources.base.image = images[img];
-            newMat->data.resources.base.sampler = file.samplers[sampler];
+            newMat->mData.resources.base.image = images[img];
+            newMat->mData.resources.base.sampler = file.mSamplers[sampler];
         }
         if (mat.pbrData.metallicRoughnessTexture.has_value()) {
             size_t img = gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].imageIndex.value();
             size_t sampler = gltf.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].samplerIndex.value();
-            newMat->data.resources.metallicRoughness.image = images[img];
-            newMat->data.resources.metallicRoughness.sampler = file.samplers[sampler];
+            newMat->mData.resources.metallicRoughness.image = images[img];
+            newMat->mData.resources.metallicRoughness.sampler = file.mSamplers[sampler];
         }
         if (mat.normalTexture.has_value()) {
             size_t img = gltf.textures[mat.normalTexture.value().textureIndex].imageIndex.value();
             size_t sampler = gltf.textures[mat.normalTexture.value().textureIndex].samplerIndex.value();
-            newMat->data.resources.normal.image = images[img];
-            newMat->data.resources.normal.sampler = file.samplers[sampler];
+            newMat->mData.resources.normal.image = images[img];
+            newMat->mData.resources.normal.sampler = file.mSamplers[sampler];
         }
         if (mat.occlusionTexture.has_value()) {
             size_t img = gltf.textures[mat.occlusionTexture.value().textureIndex].imageIndex.value();
             size_t sampler = gltf.textures[mat.occlusionTexture.value().textureIndex].samplerIndex.value();
-            newMat->data.resources.occlusion.image = images[img];
-            newMat->data.resources.occlusion.sampler = file.samplers[sampler];
+            newMat->mData.resources.occlusion.image = images[img];
+            newMat->mData.resources.occlusion.sampler = file.mSamplers[sampler];
         }
         if (mat.emissiveTexture.has_value()) {
             size_t img = gltf.textures[mat.emissiveTexture.value().textureIndex].imageIndex.value();
             size_t sampler = gltf.textures[mat.emissiveTexture.value().textureIndex].samplerIndex.value();
-            newMat->data.resources.emissive.image = images[img];
-            newMat->data.resources.emissive.sampler = file.samplers[sampler];
+            newMat->mData.resources.emissive.image = images[img];
+            newMat->mData.resources.emissive.sampler = file.mSamplers[sampler];
         }
 
         // Build material
@@ -177,7 +177,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     for (fastgltf::Mesh& mesh : gltf.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
         meshes.push_back(newmesh);
-        file.meshes[mesh.name.c_str()] = newmesh;
+        file.mMeshes[mesh.name.c_str()] = newmesh;
         newmesh->name = mesh.name;
 
         // Clear the mesh arrays each mesh, we dont want to merge them by error
@@ -198,7 +198,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                 fastgltf::iterateAccessor<std::uint32_t>(gltf, indexaccessor,
                     [&](std::uint32_t idx) {
                         // Add the vertices vector size so indices would reference vertices of current primitive instead of first set of vertices added
-                        indices.push_back(idx + initialVerticesSize);
+                        indices.push_back(idx);
                     });
             }
 
@@ -274,11 +274,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         }
 
         nodes.push_back(newNode);
-        file.nodes[node.name.c_str()];
+        file.mNodes[node.name.c_str()];
 
         // First function if it's a mat4 transform, second function if it's separate transform / rotate / scale quaternion or vec3
         std::visit(fastgltf::visitor { [&](const fastgltf::Node::TransformMatrix& matrix) {
-                                          memcpy(&newNode->localTransform, matrix.data(), sizeof(matrix));
+                                          memcpy(&newNode->mLocalTransform, matrix.data(), sizeof(matrix));
                                       },
                        [&](const fastgltf::Node::TRS& transform) {
                            const glm::vec3 tl(transform.translation[0], transform.translation[1],
@@ -291,7 +291,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
                            const glm::mat4 rm = glm::toMat4(rot);
                            const glm::mat4 sm = glm::scale(glm::mat4(1.f), sc);
 
-                           newNode->localTransform = tm * rm * sm;
+                           newNode->mLocalTransform = tm * rm * sm;
                        } },
             node.transform);
     }
@@ -302,15 +302,15 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         std::shared_ptr<Node>& sceneNode = nodes[i];
 
         for (auto& c : node.children) {
-            sceneNode->children.push_back(nodes[c]);
-            nodes[c]->parent = sceneNode;
+            sceneNode->mChildren.push_back(nodes[c]);
+            nodes[c]->mParent = sceneNode;
         }
     }
 
     // Find the top nodes, with no parents
     for (auto& node : nodes) {
-        if (node->parent.lock() == nullptr) {
-            file.topNodes.push_back(node);
+        if (node->mParent.lock() == nullptr) {
+            file.mTopNodes.push_back(node);
             node->refreshTransform(glm::mat4 { 1.f });
         }
     }
@@ -391,8 +391,8 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
 
 void LoadedGLTF::clearAll() const
 {
-    const VkDevice device = creator->_device;
+    const VkDevice device = mEngine->mDevice;
 
-    for (const auto& sampler : samplers)
+    for (const auto& sampler : mSamplers)
         vkDestroySampler(device, sampler, nullptr);
 }

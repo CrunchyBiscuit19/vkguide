@@ -16,15 +16,14 @@ class VulkanEngine;
 
 struct LoadedGLTF {
     // Storage for all the data on a given glTF file
-    std::unordered_map<std::string, std::shared_ptr<MeshData>> meshes;
-    std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
-    std::unordered_map<std::string, AllocatedImage> images;
-    std::unordered_map<std::string, std::shared_ptr<PbrMaterial>> materials;
+    std::unordered_map<std::string, std::shared_ptr<MeshData>> mMeshes;
+    std::unordered_map<std::string, std::shared_ptr<Node>> mNodes;
+    std::unordered_map<std::string, AllocatedImage> mImages;
+    std::unordered_map<std::string, std::shared_ptr<PbrMaterial>> mMaterials;
+    std::vector<std::shared_ptr<Node>> mTopNodes; // Nodes that dont have a parent, for iterating through the file in tree order
+    std::vector<VkSampler> mSamplers;
 
-    std::vector<std::shared_ptr<Node>> topNodes; // Nodes that dont have a parent, for iterating through the file in tree order
-    std::vector<VkSampler> samplers;
-
-    VulkanEngine* creator;
+    VulkanEngine* mEngine;
 
     ~LoadedGLTF() { clearAll(); }
 

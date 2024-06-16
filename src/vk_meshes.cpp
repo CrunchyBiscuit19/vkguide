@@ -3,7 +3,7 @@
 
 void Node::refreshTransform(const glm::mat4& parentMatrix)
 {
-    worldTransform = parentMatrix * localTransform;
-    for (const auto& c : children)
-        c->refreshTransform(worldTransform);
+    mWorldTransform = parentMatrix * mLocalTransform;
+    for (const auto& c : mChildren)
+        c->refreshTransform(mWorldTransform);
 }
