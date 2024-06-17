@@ -23,6 +23,8 @@ constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
 
 constexpr unsigned int MAX_INSTANCES = 10000;
 
+constexpr unsigned int MAX_INDIRECT_COMMANDS = 1000;
+
 struct EngineStats {
     float frametime;
     int triangle_count;
@@ -133,8 +135,8 @@ public:
     DescriptorCombined mMaterialTexturesArray;
 
     // Store indirect commands per material
-    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectCommands;
-    std::unordered_map<PbrMaterial*, AllocatedBuffer> mIndirectBuffers;
+    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectBatches;
+    AllocatedBuffer mGlobalIndirectBuffer;
 
     // Samplers
     VkSampler mDefaultSamplerLinear;
@@ -220,6 +222,7 @@ public:
     void create_instance_buffer();
     void create_scene_buffer();
     void create_material_constants_buffer();
+    void create_indirect_buffer();
 
     void upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices);
 
@@ -227,7 +230,7 @@ public:
         AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset);
     void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
     void iterate_primitives();
-    void update_indirect_buffers();
+    void update_indirect_buffer(PbrMaterial* currentMaterial);
     void update_instanced_data();
     void update_scene_buffer();
     void update_material_buffer(PbrMaterial& material);
@@ -252,6 +255,7 @@ public:
     void cleanup_buffers();
     void cleanup_imgui() const;
     void cleanup_misc() const;
+    void cleanup_per_draw();
     void cleanup_core() const;
     void cleanup(); // shuts down the engine
 };
