@@ -33,13 +33,13 @@ constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::string> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
-    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+        "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
     //    "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
-    "../../assets/structure/structure.glb",
+    //"../../assets/structure/structure.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -790,7 +790,7 @@ void VulkanEngine::iterate_primitives()
 void VulkanEngine::update_indirect_buffer(PbrMaterial* currentMaterial)
 {
     // For each material, update mIndirectBuffer with associated draw commands
-    std::vector<VkDrawIndexedIndirectCommand> indirectCommands = mIndirectBatches[currentMaterial];
+    const auto& indirectCommands = mIndirectBatches[currentMaterial];
     const auto indirectCommandsSize = indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mGlobalIndirectBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
@@ -815,7 +815,7 @@ void VulkanEngine::update_instanced_data()
     for (int i = 0; i < objectCount; i++) {
         instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { 0, 0, 0 });
         instanceData[i].rotation = glm::toMat4(rotation(glm::vec3(), glm::vec3()));
-        instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 1.f });
+        instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 3.f });
     }
 
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mInstanceBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
@@ -987,6 +987,7 @@ void VulkanEngine::draw()
     VK_CHECK(vkWaitForFences(mDevice, 1, &(get_current_frame().mRenderFence), true, 1000000000));
     VK_CHECK(vkResetFences(mDevice, 1, &(get_current_frame().mRenderFence))); // Flip to unsignalled
 
+    cleanup_per_draw();
     update_scene();
 
     // Request image from the swapchain
