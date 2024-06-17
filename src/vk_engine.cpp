@@ -108,7 +108,7 @@ void VulkanEngine::init_imgui()
     pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
     pool_info.pPoolSizes = pool_sizes;
 
-    VK_CHECK(vkCreateDescriptorPool(mDevice, &pool_info, nullptr, &mImguiDescriptorPool));
+    VK_CHECK(vkCreateDescriptorPool(mDevice, &pool_info, nullptr, &mImmSubmit.imguiDescriptorPool));
 
     // Initialize imgui library
     ImGui::CreateContext();
@@ -119,7 +119,7 @@ void VulkanEngine::init_imgui()
     init_info.PhysicalDevice = mChosenGPU;
     init_info.Device = mDevice;
     init_info.Queue = mGraphicsQueue;
-    init_info.DescriptorPool = mImguiDescriptorPool;
+    init_info.DescriptorPool = mImmSubmit.imguiDescriptorPool;
     init_info.MinImageCount = 3;
     init_info.ImageCount = 3;
     init_info.UseDynamicRendering = true;
@@ -260,11 +260,11 @@ void VulkanEngine::init_commands()
     }
 
     // Immediate submits
-    VK_CHECK(vkCreateCommandPool(mDevice, &commandPoolInfo, nullptr, &mImmCommandPool));
-    const VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(mImmCommandPool, 1);
-    VK_CHECK(vkAllocateCommandBuffers(mDevice, &cmdAllocInfo, &mImmCommandBuffer));
+    VK_CHECK(vkCreateCommandPool(mDevice, &commandPoolInfo, nullptr, &mImmSubmit.commandPool));
+    const VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(mImmSubmit.commandPool, 1);
+    VK_CHECK(vkAllocateCommandBuffers(mDevice, &cmdAllocInfo, &mImmSubmit.commandBuffer)); 
 
-    mImmediateDeletionQueue.commandPools.push_resource(mDevice, mImmCommandPool, nullptr);
+    mImmediateDeletionQueue.commandPools.push_resource(mDevice, mImmSubmit.commandPool, nullptr);
 }
 
 void VulkanEngine::init_sync_structures()
@@ -286,8 +286,8 @@ void VulkanEngine::init_sync_structures()
     }
 
     // Immediate fence
-    VK_CHECK(vkCreateFence(mDevice, &fenceCreateInfo, nullptr, &mImmFence));
-    mImmediateDeletionQueue.fences.push_resource(mDevice, mImmFence, nullptr);
+    VK_CHECK(vkCreateFence(mDevice, &fenceCreateInfo, nullptr, &mImmSubmit.fence));
+    mImmediateDeletionQueue.fences.push_resource(mDevice, mImmSubmit.fence, nullptr);
 }
 
 void VulkanEngine::init_descriptors()
@@ -303,30 +303,23 @@ void VulkanEngine::init_descriptors()
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        mDrawImageDescriptorLayout = builder.build(mDevice, VK_SHADER_STAGE_COMPUTE_BIT);
+        mDrawImageDescriptor.layout = builder.build(mDevice, VK_SHADER_STAGE_COMPUTE_BIT);
     }
     // Allocate a descriptor set for our draw image
-    mDrawImageDescriptors = mGlobalDescriptorAllocator.allocate(mDevice, mDrawImageDescriptorLayout);
+    mDrawImageDescriptor.set = mGlobalDescriptorAllocator.allocate(mDevice, mDrawImageDescriptor.layout);
     DescriptorWriter writer;
     writer.write_image(0, mDrawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    writer.update_set(mDevice, mDrawImageDescriptors);
+    writer.update_set(mDevice, mDrawImageDescriptor.set);
 
     // Create descriptor set layout for texture array
     int materialTexturesArraySize = 1000;
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialTexturesArraySize);
-        mMaterialTexturesArraySetLayout = builder.build(mDevice, VK_SHADER_STAGE_FRAGMENT_BIT, true);
+        mMaterialTexturesArray.layout = builder.build(mDevice, VK_SHADER_STAGE_FRAGMENT_BIT, true);
     }
     // Allocate a descriptor set for texture array
-    mMaterialTexturesArrayDescriptorSet = mGlobalDescriptorAllocator.allocate(mDevice, mMaterialTexturesArraySetLayout, true, materialTexturesArraySize);
-
-    // Create descriptor set layout for the magenta-black texture
-    {
-        DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        mStockImageDescriptorLayout = builder.build(mDevice, VK_SHADER_STAGE_FRAGMENT_BIT);
-    }
+    mMaterialTexturesArray.set = mGlobalDescriptorAllocator.allocate(mDevice, mMaterialTexturesArray.layout, true, materialTexturesArraySize);
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         // create a descriptor pool
@@ -341,9 +334,8 @@ void VulkanEngine::init_descriptors()
         mFrames[i].mFrameDescriptors.init(mDevice, 1000, frame_sizes);
     }
 
-    mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mStockImageDescriptorLayout, nullptr);
-    mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mDrawImageDescriptorLayout, nullptr);
-    mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mMaterialTexturesArraySetLayout, nullptr);
+    mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mDrawImageDescriptor.layout, nullptr);
+    mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mMaterialTexturesArray.layout, nullptr);
 }
 
 void VulkanEngine::init_pipeline_caches()
@@ -524,7 +516,7 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     ssboAddressesRange.size = sizeof(SSBOAddresses);
     ssboAddressesRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    std::vector<VkDescriptorSetLayout> layouts = { mMaterialTexturesArraySetLayout };
+    std::vector<VkDescriptorSetLayout> layouts = { mMaterialTexturesArray.layout };
     VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
     mesh_layout_info.pSetLayouts = layouts.data();
     mesh_layout_info.setLayoutCount = layouts.size();
@@ -847,9 +839,8 @@ void VulkanEngine::update_scene_buffer()
     mSceneData.view = mMainCamera.getViewMatrix();
     mSceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(mWindowExtent.width) / static_cast<float>(mWindowExtent.height), 10000.f, 0.1f);
     mSceneData.proj[1][1] *= -1;
-    mSceneData.viewproj = mSceneData.proj * mSceneData.view;
 
-    static const AllocatedBuffer stagingBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
+    static const AllocatedBuffer stagingBuffer = create_staging_buffer(sizeof(SceneData), mBufferDeletionQueue.lifetimeBuffers);
     void* stagingAddress = stagingBuffer.allocation->GetMappedData();
     
     memcpy(stagingAddress, &mSceneData, sizeof(SceneData));
@@ -892,7 +883,7 @@ void VulkanEngine::update_material_texture_array(PbrMaterial& material)
     writer.write_image_array(0, material.mData.resources.normal.image.imageView, material.mData.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 3);
     writer.write_image_array(0, material.mData.resources.occlusion.image.imageView, material.mData.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialIndex + 4);
 
-    writer.update_set(mDevice, mMaterialTexturesArrayDescriptorSet);
+    writer.update_set(mDevice, mMaterialTexturesArray.set);
 }
 
 void VulkanEngine::update_scene()
@@ -955,12 +946,12 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         pushConstants.materialsBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline); // TODO Check for same pipeline in previous loop
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArrayDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArray.set, 0, nullptr);
         vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &pushConstants);
 
         // Set dynamic viewport
         VkViewport viewport = {};
-        viewport.x = 0;
+        viewport.x = 0; 
         viewport.y = 0;
         viewport.width = static_cast<float>(mDrawExtent.width);
         viewport.height = static_cast<float>(mDrawExtent.height);
@@ -1183,10 +1174,10 @@ void VulkanEngine::run()
 
 void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const
 {
-    VK_CHECK(vkResetFences(mDevice, 1, &mImmFence));
-    VK_CHECK(vkResetCommandBuffer(mImmCommandBuffer, 0));
+    VK_CHECK(vkResetFences(mDevice, 1, &mImmSubmit.fence));
+    VK_CHECK(vkResetCommandBuffer(mImmSubmit.commandBuffer, 0));
 
-    const VkCommandBuffer cmd = mImmCommandBuffer;
+    const VkCommandBuffer cmd = mImmSubmit.commandBuffer;
 
     const VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
@@ -1196,8 +1187,8 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& f
     VkCommandBufferSubmitInfo cmdinfo = vkinit::command_buffer_submit_info(cmd);
     const VkSubmitInfo2 submit = vkinit::submit_info(&cmdinfo, nullptr, nullptr);
 
-    VK_CHECK(vkQueueSubmit2(mGraphicsQueue, 1, &submit, mImmFence));
-    VK_CHECK(vkWaitForFences(mDevice, 1, &mImmFence, true, 9999999999));
+    VK_CHECK(vkQueueSubmit2(mGraphicsQueue, 1, &submit, mImmSubmit.fence));
+    VK_CHECK(vkWaitForFences(mDevice, 1, &mImmSubmit.fence, true, 9999999999));
 }
 
 void VulkanEngine::cleanup_immediate()
@@ -1249,7 +1240,7 @@ void VulkanEngine::cleanup_buffers()
 
 void VulkanEngine::cleanup_imgui() const
 {
-    vkDestroyDescriptorPool(mDevice, mImguiDescriptorPool, nullptr);
+    vkDestroyDescriptorPool(mDevice, mImmSubmit.imguiDescriptorPool, nullptr);
     ImGui_ImplVulkan_Shutdown();
 }
 

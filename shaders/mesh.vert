@@ -25,7 +25,6 @@ struct Instance {
 struct SceneData {   
 	mat4 view;
 	mat4 proj;
-	mat4 viewproj;
 	vec4 ambientColor;
 	vec4 sunlightDirection; // w for sun power
 	vec4 sunlightColor;
@@ -57,7 +56,7 @@ layout( push_constant, std430 ) uniform PushConstants
 	VertexBuffer vertexBuffer;
 	InstanceBuffer instanceBuffer;
 	SceneBuffer sceneBuffer;
-	MaterialBuffer materialBuffer;
+	MaterialBuffer materialBuffer; 
 } constants;
 
 void main() 
@@ -69,10 +68,11 @@ void main()
 	mat4 translation = constants.instanceBuffer.instances[gl_InstanceIndex].translation;
 	mat4 rotation = constants.instanceBuffer.instances[gl_InstanceIndex].rotation;
 	mat4 scale = constants.instanceBuffer.instances[gl_InstanceIndex].scale;
-	mat4 viewproj = constants.sceneBuffer.sceneData.viewproj; 
+	mat4 proj = constants.sceneBuffer.sceneData.proj; 
+	mat4 view = constants.sceneBuffer.sceneData.view; 
 
 	mat4 renderMatrix = mat4(1.0) * mat4(1.0) * mat4(1.0);
-	gl_Position =  viewproj * renderMatrix * position; // PVM matrices
+	gl_Position =  proj * view * renderMatrix * position; // PVM matrices
 
 	outNormal = mat3(transpose(inverse(renderMatrix))) * v.normal;
 	outUV.x = v.uv_x;

@@ -5,6 +5,13 @@
 
 struct DrawContext;
 
+struct Vertex {
+    glm::vec3 position;
+    float uv_x;
+    glm::vec3 normal;
+    float uv_y;
+};
+
 struct Bounds {
     glm::vec3 origin;
     float sphereRadius;

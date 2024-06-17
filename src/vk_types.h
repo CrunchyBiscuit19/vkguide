@@ -139,13 +139,6 @@ struct AllocatedBuffer {
     VmaAllocationInfo info;
 };
 
-struct Vertex {
-    glm::vec3 position;
-    float uv_x;
-    glm::vec3 normal;
-    float uv_y;
-};
-
 struct SSBOAddresses {
     VkDeviceAddress vertexBuffer;
     VkDeviceAddress instanceBuffer;
@@ -156,7 +149,6 @@ struct SSBOAddresses {
 struct SceneData {
     glm::mat4 view;
     glm::mat4 proj;
-    glm::mat4 viewproj;
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
@@ -166,6 +158,11 @@ struct InstanceData {
     glm::mat4 translation;
     glm::mat4 rotation;
     glm::mat4 scale;
+};
+
+struct DescriptorCombined {
+    VkDescriptorSet set;
+    VkDescriptorSetLayout layout;
 };
 
 #define VK_CHECK(x)                                                          \

@@ -109,11 +109,9 @@ public:
 
     // Images
     std::unordered_map<std::string, AllocatedImage> mStockImages;
-    VkDescriptorSetLayout mStockImageDescriptorLayout;
 
     AllocatedImage mDrawImage; // Drawn images before copying to swapchain
-    VkDescriptorSetLayout mDrawImageDescriptorLayout;
-    VkDescriptorSet mDrawImageDescriptors;
+    DescriptorCombined mDrawImageDescriptor;
     VkExtent2D mDrawExtent;
 
     AllocatedImage mDepthImage;
@@ -132,8 +130,7 @@ public:
     // Models and materials
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> mLoadedModels;
     AllocatedBuffer mMaterialConstantsBuffer;
-    VkDescriptorSetLayout mMaterialTexturesArraySetLayout;
-    VkDescriptorSet mMaterialTexturesArrayDescriptorSet;
+    DescriptorCombined mMaterialTexturesArray;
 
     // Store indirect commands per material
     std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectCommands;
@@ -147,10 +144,12 @@ public:
     Camera mMainCamera;
 
     // Immediate submit
-    VkFence mImmFence;
-    VkCommandBuffer mImmCommandBuffer;
-    VkCommandPool mImmCommandPool;
-    VkDescriptorPool mImguiDescriptorPool;
+    struct immSubmit {
+        VkFence fence;
+        VkCommandBuffer commandBuffer;
+        VkCommandPool commandPool;
+        VkDescriptorPool imguiDescriptorPool;
+    } mImmSubmit;
 
     // Deletion queues
     struct SwapchainDeletionQueue {
