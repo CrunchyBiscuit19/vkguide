@@ -14,6 +14,15 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 constexpr unsigned int ONE_SECOND_IN_MILLISECONDS = 1000;
 constexpr unsigned int EXPECTED_FRAME_RATE = 60;
 
+constexpr unsigned int ONE_MEBIBYTE_IN_BYTES = 1048576;
+
+constexpr unsigned int MAX_IMAGE_SIZE = 100 * ONE_MEBIBYTE_IN_BYTES;
+
+constexpr unsigned int DEFAULT_VERTEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
+constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
+
+constexpr unsigned int MAX_INSTANCES = 10000;
+
 struct EngineStats {
     float frametime;
     int triangle_count;
@@ -93,7 +102,7 @@ public:
     std::vector<VkImageView> mSwapchainImageViews;
     bool mResizeRequested;
 
-    // Pipeline things
+    // Pipelines
     std::vector<char> mPipelineCacheData;
     VkPipelineCache mPipelineCache;
     std::unordered_map<std::size_t, MaterialPipeline> mPipelinesCreated;
@@ -109,12 +118,11 @@ public:
 
     AllocatedImage mDepthImage;
 
-    // Draw indirect-related
-    AllocatedBuffer mIndirectVertexBuffer;
-    AllocatedBuffer mIndirectIndexBuffer;
-    // For each material, add to it the associated primitives
-    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectBatches;
-    std::unordered_map<PbrMaterial*, AllocatedBuffer> mIndirectBuffers;
+    // Geometry data
+    AllocatedBuffer mGlobalVertexBuffer;
+    AllocatedBuffer mGlobalIndexBuffer;
+
+    // Instance data
     AllocatedBuffer mInstanceBuffer;
 
     // Scene data
@@ -126,6 +134,10 @@ public:
     AllocatedBuffer mMaterialConstantsBuffer;
     VkDescriptorSetLayout mMaterialTexturesArraySetLayout;
     VkDescriptorSet mMaterialTexturesArrayDescriptorSet;
+
+    // Store indirect commands per material
+    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectCommands;
+    std::unordered_map<PbrMaterial*, AllocatedBuffer> mIndirectBuffers;
 
     // Samplers
     VkSampler mDefaultSamplerLinear;
@@ -161,7 +173,7 @@ public:
     } mPipelineDeletionQueue;
 
     struct BufferDeletionQueue {
-        DeletionQueue<VkBuffer> genericBuffers;
+        DeletionQueue<VkBuffer> lifetimeBuffers;
         DeletionQueue<VkBuffer> perDrawBuffers;
         DeletionQueue<VkBuffer> tempBuffers;
     } mBufferDeletionQueue;
@@ -185,6 +197,7 @@ public:
     void init_descriptors();
     void init_pipeline_caches();
     void init_pipelines();
+    void init_buffers();
     void init_default_data();
     void init_models(const std::vector<std::string>& modelPaths);
 
@@ -199,18 +212,23 @@ public:
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue);
     void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue);
 
-    AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-    AllocatedImage create_image(const void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+    AllocatedImage create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+    AllocatedImage create_image(const void* data, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     void destroy_image(const AllocatedImage& img);
+
+    AllocatedBuffer create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue);
+    void create_vertex_index_buffers();
+    void create_instance_buffer();
+    void create_scene_buffer();
+    void create_material_constants_buffer();
 
     void upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices);
 
-    void create_vertex_index_buffers();
     void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
         AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset);
     void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
     void iterate_primitives();
-    void update_indirect_batches();
+    void update_indirect_buffers();
     void update_instanced_data();
     void update_scene_buffer();
     void update_material_buffer(PbrMaterial& material);
