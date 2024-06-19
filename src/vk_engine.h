@@ -63,7 +63,7 @@ struct FrameData {
     }
 };
 
-struct MultipleBufferCopies {
+struct BufferCopyBatch {
     VkBuffer srcBuffer;
     VkBuffer dstBuffer;
     std::vector<VkBufferCopy> bufferCopies;
@@ -132,7 +132,7 @@ public:
     AllocatedImage mDepthImage;
 
     // Store copy instructions for buffers
-    std::vector<MultipleBufferCopies> mMultipleBufferCopies;
+    std::vector<BufferCopyBatch> mBufferCopyBatches;
 
     // Geometry data
     AllocatedBuffer mGlobalVertexBuffer;
@@ -252,6 +252,7 @@ public:
     void update_scene_buffer();
     void update_material_buffer();
     void update_material_texture_array();
+    void submit_buffer_updates();
     void update_draw_data();
 
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;

@@ -28,7 +28,7 @@ struct SceneData {
 	vec4 ambientColor;
 	vec4 sunlightDirection; // w for sun power
 	vec4 sunlightColor;
-};
+}; 
 struct Material {
     vec4 baseFactor;
     vec4 emissiveFactor;

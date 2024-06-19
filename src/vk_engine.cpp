@@ -33,13 +33,13 @@ constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::string> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
-    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
     //    "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
-    //"../../assets/structure/structure.glb",
+    "../../assets/structure/structure.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -806,27 +806,27 @@ void VulkanEngine::update_indirect_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mGlobalIndirectBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    // For each material, update mIndirectBuffer with associated draw commands
     VkDeviceSize indirectBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches) {
         auto* currentMaterial = indirectBatch.first;
-
         const auto& indirectCommands = mIndirectBatches[currentMaterial];
+
         const VkDeviceSize indirectCommandsSize = indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-        memcpy(stagingAddress, indirectCommands.data(), indirectCommandsSize);
-
-        VkBufferCopy indirectCopy {};
-        indirectCopy.dstOffset = indirectBufferOffset;
-        indirectCopy.srcOffset = 0;
-        indirectCopy.size = indirectCommandsSize;
-
-        immediate_submit([&](const VkCommandBuffer cmd) {
-            vkCmdCopyBuffer(cmd, stagingBuffer.buffer, mGlobalIndirectBuffer.buffer, 1, &indirectCopy);
-        });
+        memcpy(static_cast<char*>(stagingAddress) + indirectBufferOffset, indirectCommands.data(), indirectCommandsSize);
 
         indirectBufferOffset += indirectCommandsSize;
     }
+
+    VkBufferCopy indirectCopy {};
+    indirectCopy.dstOffset = 0;
+    indirectCopy.srcOffset = 0;
+    indirectCopy.size = stagingBuffer.info.size;
+
+    mBufferCopyBatches.emplace_back(
+        stagingBuffer.buffer,
+        mGlobalIndirectBuffer.buffer,
+        std::vector<VkBufferCopy> { indirectCopy });
 }
 
 void VulkanEngine::update_instanced_buffer()
@@ -851,16 +851,16 @@ void VulkanEngine::update_instanced_buffer()
     instanceCopy.srcOffset = 0;
     instanceCopy.size = stagingBuffer.info.size;
 
-    immediate_submit([&](const VkCommandBuffer cmd) {
-        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, mInstanceBuffer.buffer, 1, &instanceCopy);
-    });
+    mBufferCopyBatches.emplace_back(
+        stagingBuffer.buffer,
+        mInstanceBuffer.buffer,
+        std::vector<VkBufferCopy> { instanceCopy });
 }
 
 void VulkanEngine::update_scene_buffer()
 {
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(sizeof(SceneData), mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
-
 
     mSceneData.ambientColor = glm::vec4(.1f);
     mSceneData.sunlightColor = glm::vec4(1.f);
@@ -869,7 +869,7 @@ void VulkanEngine::update_scene_buffer()
     mSceneData.view = mMainCamera.getViewMatrix();
     mSceneData.proj = glm::perspective(glm::radians(70.f), static_cast<float>(mWindowExtent.width) / static_cast<float>(mWindowExtent.height), 10000.f, 0.1f);
     mSceneData.proj[1][1] *= -1;
-    
+
     const VkDeviceSize sceneDataSize = sizeof(SceneData);
 
     memcpy(stagingAddress, &mSceneData, sceneDataSize);
@@ -877,11 +877,12 @@ void VulkanEngine::update_scene_buffer()
     VkBufferCopy sceneCopy {};
     sceneCopy.dstOffset = 0;
     sceneCopy.srcOffset = 0;
-    sceneCopy.size = sizeof(SceneData);
+    sceneCopy.size = sceneDataSize;
 
-    immediate_submit([&](const VkCommandBuffer cmd) {
-        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, mSceneBuffer.buffer, 1, &sceneCopy);
-    });
+    mBufferCopyBatches.emplace_back(
+        stagingBuffer.buffer,
+        mSceneBuffer.buffer,
+        std::vector<VkBufferCopy> { sceneCopy });
 }
 
 void VulkanEngine::update_material_buffer()
@@ -889,26 +890,26 @@ void VulkanEngine::update_material_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mMaterialConstantsBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    // For each material, update mMaterialConstantsBuffer with material data
     VkDeviceSize materialConstantsBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches) {
         auto* currentMaterial = indirectBatch.first;
 
         const VkDeviceSize materialConstantsSize = sizeof(MaterialConstants);
 
-        memcpy(stagingAddress, &currentMaterial->mData.constants, materialConstantsSize);
-
-        VkBufferCopy materialCopy {};
-        materialCopy.dstOffset = materialConstantsBufferOffset;
-        materialCopy.srcOffset = 0;
-        materialCopy.size = materialConstantsSize;
-
-        immediate_submit([&](const VkCommandBuffer cmd) {
-            vkCmdCopyBuffer(cmd, stagingBuffer.buffer, mMaterialConstantsBuffer.buffer, 1, &materialCopy);
-        });
+        memcpy(static_cast<char*>(stagingAddress) + materialConstantsBufferOffset, &currentMaterial->mData.constants, materialConstantsSize);
 
         materialConstantsBufferOffset += materialConstantsSize;
     }
+
+    VkBufferCopy materialCopy {};
+    materialCopy.dstOffset = 0;
+    materialCopy.srcOffset = 0;
+    materialCopy.size = stagingBuffer.info.size;
+
+    mBufferCopyBatches.emplace_back(
+        stagingBuffer.buffer,
+        mMaterialConstantsBuffer.buffer,
+        std::vector<VkBufferCopy> { materialCopy });
 }
 
 void VulkanEngine::update_material_texture_array()
@@ -931,6 +932,15 @@ void VulkanEngine::update_material_texture_array()
     writer.update_set(mDevice, mMaterialTexturesArray.set);
 }
 
+void VulkanEngine::submit_buffer_updates()
+{
+    immediate_submit([&](const VkCommandBuffer cmd) {
+        for (const auto& bufferCopyBatch : mBufferCopyBatches) {
+            vkCmdCopyBuffer(cmd, bufferCopyBatch.srcBuffer, bufferCopyBatch.dstBuffer, bufferCopyBatch.bufferCopies.size(), bufferCopyBatch.bufferCopies.data());
+        }
+    });
+}
+
 void VulkanEngine::update_draw_data()
 {
     const auto start = std::chrono::system_clock::now();
@@ -941,6 +951,7 @@ void VulkanEngine::update_draw_data()
     update_material_texture_array();
     update_instanced_buffer();
     update_scene_buffer();
+    submit_buffer_updates();
 
     const auto end = std::chrono::system_clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -1283,6 +1294,7 @@ void VulkanEngine::cleanup_per_draw()
     get_current_frame().mFrameDeletionQueue.bufferDeletion.flush(); // For buffers that are used by cmd buffers. Wait for fence of this frame to be reset before flushing.
     mBufferDeletionQueue.perDrawBuffers.flush();
     mIndirectBatches.clear();
+    mBufferCopyBatches.clear(); 
 }
 
 void VulkanEngine::cleanup_core() const
