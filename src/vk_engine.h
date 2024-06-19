@@ -10,6 +10,8 @@
 #include <vk_materials.h>
 #include <vk_types.h>
 
+#include <map>
+
 constexpr unsigned int FRAME_OVERLAP = 2;
 constexpr unsigned int ONE_SECOND_IN_MILLISECONDS = 1000;
 constexpr unsigned int EXPECTED_FRAME_RATE = 60;
@@ -23,7 +25,9 @@ constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
 
 constexpr unsigned int MAX_INSTANCES = 10000;
 
-constexpr unsigned int MAX_INDIRECT_COMMANDS = 1000;
+constexpr unsigned int MAX_INDIRECT_COMMANDS = 10000;
+
+constexpr unsigned int MAX_MATERIALS = 10000;
 
 struct EngineStats {
     float frametime;
@@ -57,6 +61,12 @@ struct FrameData {
         mFrameDeletionQueue.bufferDeletion.flush();
         mFrameDescriptors.destroy_pools(device);
     }
+};
+
+struct MultipleBufferCopies {
+    VkBuffer srcBuffer;
+    VkBuffer dstBuffer;
+    std::vector<VkBufferCopy> bufferCopies;
 };
 
 class VulkanEngine {
@@ -109,6 +119,9 @@ public:
     VkPipelineCache mPipelineCache;
     std::unordered_map<std::size_t, MaterialPipeline> mPipelinesCreated;
 
+    // Push constants
+    SSBOAddresses mPushConstants;
+
     // Images
     std::unordered_map<std::string, AllocatedImage> mStockImages;
 
@@ -117,6 +130,9 @@ public:
     VkExtent2D mDrawExtent;
 
     AllocatedImage mDepthImage;
+
+    // Store copy instructions for buffers
+    std::vector<MultipleBufferCopies> mMultipleBufferCopies;
 
     // Geometry data
     AllocatedBuffer mGlobalVertexBuffer;
@@ -135,7 +151,7 @@ public:
     DescriptorCombined mMaterialTexturesArray;
 
     // Store indirect commands per material
-    std::unordered_map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectBatches;
+    std::map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectBatches;
     AllocatedBuffer mGlobalIndirectBuffer;
 
     // Samplers
@@ -201,6 +217,7 @@ public:
     void init_buffers();
     void init_default_data();
     void init_models(const std::vector<std::string>& modelPaths);
+    void init_push_constants();
 
     void create_swapchain(uint32_t width, uint32_t height);
     void destroy_swapchain();
@@ -230,12 +247,12 @@ public:
         AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset);
     void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
     void iterate_primitives();
-    void update_indirect_buffer(PbrMaterial* currentMaterial);
-    void update_instanced_data();
+    void update_indirect_buffer();
+    void update_instanced_buffer();
     void update_scene_buffer();
-    void update_material_buffer(PbrMaterial& material);
-    void update_material_texture_array(PbrMaterial& material);
-    void update_scene();
+    void update_material_buffer();
+    void update_material_texture_array();
+    void update_draw_data();
 
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
     void draw_geometry(VkCommandBuffer cmd);
