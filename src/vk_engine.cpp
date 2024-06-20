@@ -29,7 +29,6 @@ constexpr bool bUseValidationLayers = false;
 constexpr bool bUseValidationLayers = true;
 #endif
 
-constexpr int objectCount = 1;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::string> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
@@ -743,20 +742,20 @@ void VulkanEngine::upload_primitive(Primitive& primitive, std::span<uint32_t> in
     });
 }
 
-void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
-    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset) const
+void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexBufferOffset,
+    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexBufferOffset) const
 {
     VkBufferCopy vertexCopy {};
-    vertexCopy.dstOffset = vertexOffset;
+    vertexCopy.dstOffset = vertexBufferOffset;
     vertexCopy.srcOffset = 0;
     vertexCopy.size = srcVertex.info.size;
     VkBufferCopy indexCopy {};
-    indexCopy.dstOffset = indexOffset;
+    indexCopy.dstOffset = indexBufferOffset;
     indexCopy.srcOffset = 0;
     indexCopy.size = srcIndex.info.size;
 
-    vertexOffset += srcVertex.info.size;
-    indexOffset += srcIndex.info.size;
+    vertexBufferOffset += srcVertex.info.size;
+    indexBufferOffset += srcIndex.info.size;
 
     immediate_submit([&](const VkCommandBuffer cmd) {
         vkCmdCopyBuffer(cmd, srcVertex.buffer, dstVertex.buffer, 1, &vertexCopy);
@@ -767,7 +766,7 @@ void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, Alloca
 void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset)
 {
     VkDrawIndexedIndirectCommand indirectCmd {};
-    indirectCmd.instanceCount = objectCount;
+    indirectCmd.instanceCount = OBJECT_COUNT;
     indirectCmd.firstInstance = 0;
     indirectCmd.vertexOffset = verticesOffset;
     indirectCmd.indexCount = primitive.indexCount;
@@ -782,17 +781,18 @@ void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesO
 
 void VulkanEngine::iterate_primitives()
 {
-    int currentVertexOffset = 0;
-    int currentIndexOffset = 0;
-    int totalVertices = 0;
-    int totalIndices = 0;
-    int totalPrimitives = 0;
+    int vertexBufferOffset = 0;
+    int indexBufferOffset = 0;
+
+    int verticesOffset = 0;
+    int indicesOffset = 0;
+    int primitivesOffset = 0;
 
     for (const auto& model : mLoadedModels | std::views::values) {
         for (const auto& mesh : model->mMeshes | std::views::values) {
             for (auto& primitive : mesh->primitives) {
-                update_vertex_index_buffers(primitive.vertexBuffer, mGlobalVertexBuffer, currentVertexOffset, primitive.indexBuffer, mGlobalIndexBuffer, currentIndexOffset);
-                update_indirect_commands(primitive, totalVertices, totalIndices, totalPrimitives);
+                update_vertex_index_buffers(primitive.vertexBuffer, mGlobalVertexBuffer, vertexBufferOffset, primitive.indexBuffer, mGlobalIndexBuffer, indexBufferOffset);
+                update_indirect_commands(primitive, verticesOffset, indicesOffset, primitivesOffset);
             }
         }
     }
@@ -832,8 +832,8 @@ void VulkanEngine::update_instanced_buffer()
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     std::vector<InstanceData> instanceData;
-    instanceData.resize(objectCount);
-    for (int i = 0; i < objectCount; i++) {
+    instanceData.resize(OBJECT_COUNT);
+    for (int i = 0; i < OBJECT_COUNT; i++) {
         instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { 0, 0, 0 });
         instanceData[i].rotation = glm::toMat4(rotation(glm::vec3(), glm::vec3()));
         instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 3.f });

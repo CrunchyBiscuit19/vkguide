@@ -29,6 +29,8 @@ constexpr unsigned int MAX_INDIRECT_COMMANDS = 10000;
 
 constexpr unsigned int MAX_MATERIALS = 10000;
 
+constexpr unsigned int OBJECT_COUNT = 1;
+
 struct EngineStats {
     float frametime;
     int triangle_count;
@@ -243,8 +245,8 @@ public:
 
     void upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices);
 
-    void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
-        AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset) const;
+    void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexBufferOffset,
+        AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexBufferOffset) const;
     void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
     void iterate_primitives();
     void update_indirect_buffer();
