@@ -181,7 +181,7 @@
                 {
                     "attributes": {
                         "POSITION": 25,
-                        "NORMAL": 26,
+                        "NORMAL": 26,x
                         "TEXCOORD_0": 27
                     },
                     "extensions": {

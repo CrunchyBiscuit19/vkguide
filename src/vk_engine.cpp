@@ -39,7 +39,7 @@ const std::vector<std::string> modelFilepaths {
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
     //    "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
-    "../../assets/structure/structure.glb",
+    //    "../../assets/structure/structure.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -379,7 +379,7 @@ void VulkanEngine::init_default_data()
         for (int y = 0; y < 16; y++) {
             // constexpr uint32_t magenta = 0xFF00FFFF;
             constexpr uint32_t magenta = std::byteswap(0xFF00FFFF);
-            pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+            pixels[static_cast<std::array<uint32_t, 256Ui64>::size_type>(y) * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
         }
     }
     mStockImages["errorCheckerboard"] = create_image(pixels.data(), VkExtent3D { 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
@@ -537,11 +537,8 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     mesh_layout_info.pPushConstantRanges = &ssboAddressesRange;
     mesh_layout_info.pushConstantRangeCount = 1;
 
-    MaterialPipeline materialPipeline;
-
     VkPipelineLayout newLayout;
     VK_CHECK(vkCreatePipelineLayout(mDevice, &mesh_layout_info, nullptr, &newLayout));
-    materialPipeline.layout = newLayout;
 
     VkCullModeFlags cullMode;
     (doubleSided) ? (cullMode = VK_CULL_MODE_NONE) : (cullMode = VK_CULL_MODE_BACK_BIT);
@@ -564,7 +561,7 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     }
     pipelineBuilder.mPipelineLayout = newLayout;
 
-    materialPipeline.pipeline = pipelineBuilder.build_pipeline(mDevice);
+    MaterialPipeline materialPipeline(pipelineBuilder.build_pipeline(mDevice) , newLayout);
 
     vkDestroyShaderModule(mDevice, meshFragShader, nullptr);
     vkDestroyShaderModule(mDevice, meshVertexShader, nullptr);
@@ -596,7 +593,7 @@ AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags
     return newBuffer;
 }
 
-void VulkanEngine::destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue)
+void VulkanEngine::destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue) const
 {
     bufferDeletionQueue.push_resource(mDevice, buffer.buffer, nullptr, mAllocator, buffer.allocation);
 }
@@ -631,12 +628,12 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D extent, VkFormat format, Vk
 
 AllocatedImage VulkanEngine::create_image(const void* data, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
-    const size_t dataSize = extent.depth * extent.width * extent.height * 4; // TODO check dataSize below MAX_IMAGE_SIZE
+    const size_t dataSize = static_cast<size_t>(extent.depth) * extent.width * extent.height * 4; // TODO check dataSize below MAX_IMAGE_SIZE
 
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(MAX_IMAGE_SIZE, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    memcpy(stagingAddress, data, dataSize);
+    memcpy(stagingAddress, data, dataSize); 
 
     // Image to hold data loaded from file
     const AllocatedImage newImage = create_image(extent, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
@@ -719,7 +716,7 @@ void VulkanEngine::create_indirect_buffer()
 
 void VulkanEngine::upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices)
 {
-    static const AllocatedBuffer stagingBuffer = create_staging_buffer(DEFAULT_VERTEX_BUFFER_SIZE + DEFAULT_INDEX_BUFFER_SIZE, mBufferDeletionQueue.lifetimeBuffers);
+    static const AllocatedBuffer stagingBuffer = create_staging_buffer(static_cast<size_t>(DEFAULT_VERTEX_BUFFER_SIZE) + DEFAULT_INDEX_BUFFER_SIZE, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
@@ -747,7 +744,7 @@ void VulkanEngine::upload_primitive(Primitive& primitive, std::span<uint32_t> in
 }
 
 void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
-    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset)
+    AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset) const
 {
     VkBufferCopy vertexCopy {};
     vertexCopy.dstOffset = vertexOffset;
@@ -932,7 +929,7 @@ void VulkanEngine::update_material_texture_array()
     writer.update_set(mDevice, mMaterialTexturesArray.set);
 }
 
-void VulkanEngine::submit_buffer_updates()
+void VulkanEngine::submit_buffer_updates() const
 {
     immediate_submit([&](const VkCommandBuffer cmd) {
         for (const auto& bufferCopyBatch : mBufferCopyBatches) {

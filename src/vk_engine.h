@@ -228,7 +228,7 @@ public:
     MaterialPipeline create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode);
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue);
-    void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue);
+    void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
 
     AllocatedImage create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage create_image(const void* data, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
@@ -244,7 +244,7 @@ public:
     void upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices);
 
     void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexOffset,
-        AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset);
+        AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexOffset) const;
     void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
     void iterate_primitives();
     void update_indirect_buffer();
@@ -252,7 +252,7 @@ public:
     void update_scene_buffer();
     void update_material_buffer();
     void update_material_texture_array();
-    void submit_buffer_updates();
+    void submit_buffer_updates() const;
     void update_draw_data();
 
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
