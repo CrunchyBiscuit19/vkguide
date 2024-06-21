@@ -25,17 +25,19 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
     }
 
     // Temporal arrays for all the objects to use while creating the GLTF data
-    std::vector<std::shared_ptr<MeshData>> meshes;
-    std::vector<std::shared_ptr<Node>> nodes;
     std::vector<AllocatedImage> images;
     std::vector<std::shared_ptr<PbrMaterial>> materials;
+    std::vector<std::shared_ptr<MeshData>> meshes;
+    std::vector<std::shared_ptr<Node>> nodes;
 
     // Load textures, with checkerboard as placeholder for loading errors
     images.reserve(asset.images.size());
     for (fastgltf::Image& image : asset.images) {
-        if (std::optional<AllocatedImage> img = load_image(engine, asset, image); img.has_value()) {
-            images.push_back(*img);
-            mImages[image.name.c_str()] = *img;
+        std::optional<AllocatedImage> loadedImage = load_image(engine, asset, image);
+        if (loadedImage.has_value()) {
+            images.push_back(*loadedImage);
+            mImages[image.name.c_str()] = *loadedImage;
+            fmt::println("Loaded GLTF texture: {}", image.name);
         } else {
             // Failed to load -> default checkerboard texture
             images.push_back(engine->mStockImages["grey"]);
@@ -106,7 +108,6 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
             newMat->mData.resources.emissive.sampler = mSamplers[sampler];
         }
 
-        // Build material
         newMat->create_material();
     }
 

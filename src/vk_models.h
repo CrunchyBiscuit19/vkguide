@@ -34,6 +34,8 @@ private:
     VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
     std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
 
+
+
     void cleanup() const;
 };
 
