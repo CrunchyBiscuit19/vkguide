@@ -6,7 +6,7 @@
 #include <camera.h>
 #include <cvars.h>
 #include <vk_descriptors.h>
-#include <vk_loader.h>
+#include <vk_models.h>
 #include <vk_materials.h>
 #include <vk_types.h>
 
@@ -148,7 +148,7 @@ public:
     AllocatedBuffer mSceneBuffer;
 
     // Models and materials
-    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> mLoadedModels;
+    std::unordered_map<std::string, std::shared_ptr<GLTFModel>> mLoadedModels;
     AllocatedBuffer mMaterialConstantsBuffer;
     DescriptorCombined mMaterialTexturesArray;
 

@@ -13,8 +13,8 @@ add_executable (engine
   vk_pipelines.cpp
   vk_engine.h
   vk_engine.cpp
-  vk_loader.h
-  vk_loader.cpp
+  vk_models.h
+  vk_models.cpp
   vk_meshes.h
   vk_meshes.cpp
   vk_materials.h

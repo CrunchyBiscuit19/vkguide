@@ -401,9 +401,10 @@ void VulkanEngine::init_default_data()
 void VulkanEngine::init_models(const std::vector<std::string>& modelPaths)
 {
     for (const auto& modelPath : modelPaths) {
-        const auto modelFile = load_gltf(this, modelPath);
-        assert(modelFile.has_value());
-        mLoadedModels[std::filesystem::path(modelPath).filename().string()] = *modelFile;
+        const auto gltfModel = load_gltf_model(this, modelPath);
+        assert(gltfModel.has_value());
+        mLoadedModels[std::filesystem::path(modelPath).filename().string()] = *gltfModel;
+        fmt::println("Loaded GLTF Model: {}", modelPath);
     }
 }
 

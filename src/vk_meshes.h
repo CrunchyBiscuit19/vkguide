@@ -42,7 +42,7 @@ struct Node {
     glm::mat4 mLocalTransform; // Original file data
     glm::mat4 mWorldTransform; // Modified transform to whole model
 
-    void refreshTransform(const glm::mat4& parentMatrix);
+    void refreshTransform(const glm::mat4& parentTransform);
 
     virtual ~Node() = default;
 };
