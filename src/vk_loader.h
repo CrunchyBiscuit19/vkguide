@@ -10,8 +10,6 @@
 #include <filesystem>
 #include <unordered_map>
 
-
-// forward declaration
 class VulkanEngine;
 
 struct LoadedGLTF {

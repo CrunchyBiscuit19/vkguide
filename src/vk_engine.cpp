@@ -32,7 +32,7 @@ constexpr bool bUseValidationLayers = true;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::string> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
-    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+        "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
@@ -73,6 +73,7 @@ void VulkanEngine::init()
     init_sync_structures();
     init_descriptors();
     init_pipelines();
+    init_pipeline_caches();
     init_buffers();
     init_imgui();
     init_default_data();
@@ -1315,6 +1316,7 @@ void VulkanEngine::cleanup()
         cleanup_swapchain();
         cleanup_descriptors();
         cleanup_pipelines();
+        cleanup_pipeline_caches();
         cleanup_samplers();
         cleanup_images();
         cleanup_buffers();

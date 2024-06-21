@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <variant>
+#include <filesystem>
 
 VkFilter extract_filter(fastgltf::Filter filter)
 {
@@ -43,8 +44,8 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter)
 
 std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::string_view filePath)
 {
-    fmt::print("Loading GLTF: {}\n", filePath);
-
+    fmt::println("Loading GLTF Model: {}", filePath);
+    
     fastgltf::Parser parser {};
     fastgltf::Asset gltf;
     fastgltf::GltfDataBuffer data;
@@ -66,7 +67,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
     if (load) {
         gltf = std::move(load.get());
     } else {
-        std::cerr << "Failed to load glTF: " << fastgltf::to_underlying(load.error()) << std::endl;
+        fmt::println("Failed to load GLTF Model: {}", fastgltf::to_underlying(load.error()));
         return {};
     }
 
@@ -99,7 +100,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         } else {
             // Failed to load -> default checkerboard texture
             images.push_back(engine->mStockImages["grey"]);
-            std::cout << "gltf failed to load texture " << image.name << std::endl;
+            fmt::println("Failed to load GLTF texture: {}", image.name);
         }
     }
 
@@ -312,7 +313,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf(VulkanEngine* engine, std::
         }
     }
 
-    fmt::print("Loaded GLTF: {}\n", filePath);
+    fmt::println("Loaded GLTF Mdel: {}", filePath);
 
     return scene;
 }
