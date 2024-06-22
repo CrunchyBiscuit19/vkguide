@@ -2,7 +2,7 @@
 
 void Camera::init()
 {
-    velocity = glm::vec3(0.f);
+    travel = glm::vec3(0.f);
     position = glm::vec3(0, 0, 5);
     pitch = 0;
     yaw = 0;
@@ -12,31 +12,31 @@ void Camera::init()
         const SDL_Keymod modState = SDL_GetModState();
         if (keyState[SDL_SCANCODE_W]) {
             if (modState & KMOD_LSHIFT)
-                velocity.y = 1;
+                travel.y = 1;
             else
-                velocity.z = -1;
+                travel.z = -1;
         }
         if (keyState[SDL_SCANCODE_S]) {
             if (modState & KMOD_LSHIFT)
-                velocity.y = -1;
+                travel.y = -1;
             else
-                velocity.z = 1;
+                travel.z = 1;
         }
         if (keyState[SDL_SCANCODE_A])
-            velocity.x = -1;
+            travel.x = -1;
         if (keyState[SDL_SCANCODE_D])
-            velocity.x = 1;
+            travel.x = 1;
     };
     movementFuns[LOOKANDGO] = [this]() -> void {
         const SDL_Keymod modState = SDL_GetModState();
         if (keyState[SDL_SCANCODE_W])
-            velocity.z = -1;
+            travel.z = -1;
         if (keyState[SDL_SCANCODE_S])
-            velocity.z = 1;
+            travel.z = 1;
         if (keyState[SDL_SCANCODE_A])
-            velocity.x = -1;
+            travel.x = -1;
         if (keyState[SDL_SCANCODE_D])
-            velocity.x = 1;
+            travel.x = 1;
     };
 }
 
@@ -71,10 +71,10 @@ void Camera::updatePosition(float deltaTime, float expectedDeltaTime)
 {
     switch (movementMode) {
     case MINECRAFT:
-        position += glm::vec3(getYawMatrix() * glm::vec4(velocity * 0.5f * (deltaTime / expectedDeltaTime), 0.f));
+        position += glm::vec3(getYawMatrix() * glm::vec4(travel * speed * (deltaTime / expectedDeltaTime), 0.f));
         break;
     case LOOKANDGO:
-        position += glm::vec3(getRotationMatrix() * glm::vec4(velocity * 0.5f * (deltaTime / expectedDeltaTime), 0.f));
+        position += glm::vec3(getRotationMatrix() * glm::vec4(travel * speed * (deltaTime / expectedDeltaTime), 0.f));
         break;
     }
 }
@@ -82,7 +82,7 @@ void Camera::updatePosition(float deltaTime, float expectedDeltaTime)
 void Camera::processSDLEvent(const SDL_Event& e)
 {
     const SDL_Keymod modState = SDL_GetModState();
-    velocity = glm::vec3(0.f);
+    travel = glm::vec3(0.f);
 
     movementFuns[movementMode]();
 

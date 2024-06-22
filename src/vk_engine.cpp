@@ -1200,10 +1200,12 @@ void VulkanEngine::run()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame(mWindow);
         ImGui::NewFrame();
-        if (ImGui::Begin("Background")) {
-            ImGui::SliderFloat("Render Scale", &mRenderScale, 0.3f, 1.f);
+        if (ImGui::Begin("Camera")) {
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mMainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mMainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
+            ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 1.f, "%.2f");
+            ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z); 
+            ImGui::Text("Pitch: %.1f, Yaw: %.1f", mMainCamera.pitch, mMainCamera.yaw);
             ImGui::End();
         }
         if (ImGui::Begin("Stats")) {

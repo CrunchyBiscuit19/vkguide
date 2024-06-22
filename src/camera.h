@@ -15,10 +15,11 @@ enum MovementMode
 
 class Camera {
 public:
-    glm::vec3 velocity;
+    glm::vec3 travel;
     glm::vec3 position;
     float pitch { 0.f };
     float yaw { 0.f };
+    float speed { 0.5f };
 
     const Uint8* keyState;
     SDL_bool relativeMode { SDL_TRUE };
