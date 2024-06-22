@@ -29,6 +29,8 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
     std::vector<std::shared_ptr<PbrMaterial>> materials;
     std::vector<std::shared_ptr<MeshData>> meshes;
     std::vector<std::shared_ptr<Node>> nodes;
+    std::vector<uint32_t> modelIndices;
+    std::vector<Vertex> modelVertices;
 
     // Load textures, with checkerboard as placeholder for loading errors
     images.reserve(asset.images.size());
@@ -121,13 +123,10 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
             Primitive newPrimitive;
-            newPrimitive.firstIndex = 0;
             newPrimitive.indexCount = static_cast<uint32_t>(asset.accessors[p.indicesAccessor.value()].count);
 
             std::vector<uint32_t> primitiveIndices;
             std::vector<Vertex> primitiveVertices;
-
-            // Load indexes
             {
                 // Add the indices of current primitive to the previous ones
                 fastgltf::Accessor& indexaccessor = asset.accessors[p.indicesAccessor.value()];
@@ -137,8 +136,6 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
                         primitiveIndices.push_back(idx);
                     });
             }
-
-            // Load vertex positions
             {
                 // Add the vertices of current primitive to the previous ones
                 fastgltf::Accessor& posAccessor = asset.accessors[p.findAttribute("POSITION")->second];
@@ -155,7 +152,6 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
                     });
             }
 
-            // Load vertex normals
             auto normals = p.findAttribute("NORMAL");
             if (normals != p.attributes.end()) {
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, asset.accessors[normals->second],
@@ -164,7 +160,6 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
                     });
             }
 
-            // Load UVs
             auto uv = p.findAttribute("TEXCOORD_0");
             if (uv != p.attributes.end()) {
                 fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, asset.accessors[uv->second],
@@ -191,11 +186,10 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
             newPrimitive.bounds.extents = (maxpos - minpos) / 2.f;
             newPrimitive.bounds.sphereRadius = glm::length(newPrimitive.bounds.extents);
 
-            newPrimitive.indices = primitiveIndices;
-            newPrimitive.vertices = primitiveVertices;
-
-            engine->upload_primitive(newPrimitive, primitiveIndices, primitiveVertices);
             newmesh->primitives.push_back(newPrimitive);
+            
+            modelIndices.insert(modelIndices.end(), primitiveIndices.begin(), primitiveIndices.end());
+            modelVertices.insert(modelVertices.end(), primitiveVertices.begin(), primitiveVertices.end());
         }
     }
 
@@ -252,6 +246,8 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
             node->refreshTransform(glm::mat4 { 1.f });
         }
     }
+
+    mModelBuffers = mEngine->upload_model(modelIndices, modelVertices);
 }
 
 GLTFModel::~GLTFModel()

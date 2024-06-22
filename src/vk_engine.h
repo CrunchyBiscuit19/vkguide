@@ -134,7 +134,10 @@ public:
     AllocatedImage mDepthImage;
 
     // Store copy instructions for buffers
-    std::vector<BufferCopyBatch> mBufferCopyBatches;
+    struct BufferCopyBatches {
+        std::vector<BufferCopyBatch> perDrawBuffers;
+        std::vector<BufferCopyBatch> modelBuffers;
+    } mBufferCopyBatches;
 
     // Geometry data
     AllocatedBuffer mGlobalVertexBuffer;
@@ -236,6 +239,8 @@ public:
     AllocatedImage create_image(const void* data, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     void destroy_image(const AllocatedImage& img);
 
+    ModelBuffers upload_model(std::vector<uint32_t>& indices, std::vector<Vertex>& vertices);
+
     AllocatedBuffer create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue);
     void create_vertex_index_buffers();
     void create_instance_buffer();
@@ -243,18 +248,15 @@ public:
     void create_material_constants_buffer();
     void create_indirect_buffer();
 
-    void upload_primitive(Primitive& primitive, std::span<uint32_t> indices, std::span<Vertex> vertices);
-
-    void update_vertex_index_buffers(AllocatedBuffer srcVertex, AllocatedBuffer dstVertex, int& vertexBufferOffset,
-        AllocatedBuffer srcIndex, AllocatedBuffer dstIndex, int& indexBufferOffset) const;
-    void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset, int& primitivesOffset);
-    void iterate_primitives();
+    void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
+    void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset);
+    void iterate_models();
     void update_indirect_buffer();
     void update_instanced_buffer();
     void update_scene_buffer();
     void update_material_buffer();
     void update_material_texture_array();
-    void submit_buffer_updates() const;
+    void submit_buffer_updates(std::vector<BufferCopyBatch>& bufferCopyBatches) const;
     void update_draw_data();
 
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;

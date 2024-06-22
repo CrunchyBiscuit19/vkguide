@@ -19,15 +19,8 @@ struct Bounds {
 };
 
 struct Primitive {
-    uint32_t firstIndex;
     uint32_t indexCount;
     uint32_t vertexCount;
-
-    AllocatedBuffer indexBuffer;
-    std::vector<uint32_t> indices;
-    AllocatedBuffer vertexBuffer;
-    std::vector<Vertex> vertices;
-
     std::shared_ptr<PbrMaterial> material;
     Bounds bounds;
 };

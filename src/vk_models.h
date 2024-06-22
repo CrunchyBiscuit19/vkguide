@@ -12,16 +12,23 @@
 
 class VulkanEngine;
 
+struct ModelBuffers {
+    AllocatedBuffer index;
+    AllocatedBuffer vertex;
+};
+
 class GLTFModel {
 public:
+    ModelBuffers mModelBuffers;
+
     std::unordered_map<std::string, std::shared_ptr<Node>> mNodes;
     std::vector<std::shared_ptr<Node>> mTopNodes;
 
     std::unordered_map<std::string, std::shared_ptr<MeshData>> mMeshes;
-    
+
     std::unordered_map<std::string, AllocatedImage> mImages;
     std::vector<VkSampler> mSamplers;
-    
+
     std::unordered_map<std::string, std::shared_ptr<PbrMaterial>> mMaterials;
 
     VulkanEngine* mEngine;
@@ -33,8 +40,6 @@ private:
     VkFilter extract_filter(fastgltf::Filter filter);
     VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
     std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
-
-
 
     void cleanup() const;
 };
