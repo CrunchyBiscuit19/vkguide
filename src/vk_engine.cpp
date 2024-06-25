@@ -38,7 +38,7 @@ const std::vector<std::string> modelFilepaths {
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
     //    "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
-    //    "../../assets/structure/structure.glb",
+        "../../assets/structure/structure.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -805,9 +805,7 @@ void VulkanEngine::iterate_models()
     int indicesOffset = 0;
 
     for (const auto& model : mLoadedModels | std::views::values) {
-
         update_vertex_index_buffers(model->mModelBuffers.vertex, vertexBufferOffset, model->mModelBuffers.index, indexBufferOffset);
-
         for (const auto& mesh : model->mMeshes | std::views::values) {
             for (auto& primitive : mesh->primitives) {
                 update_indirect_commands(primitive, verticesOffset, indicesOffset);

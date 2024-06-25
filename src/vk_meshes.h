@@ -23,6 +23,9 @@ struct Primitive {
     uint32_t vertexCount;
     std::shared_ptr<PbrMaterial> material;
     Bounds bounds;
+
+    std::vector<uint32_t> indices;
+    std::vector<Vertex> vertices;
 };
 
 // Implementation of a drawable scene node.

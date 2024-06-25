@@ -6,6 +6,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <ranges>
+
 GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
     : mEngine(engine)
 {
@@ -116,30 +118,28 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
     // Load meshes
     for (fastgltf::Mesh& mesh : asset.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
+        newmesh->name = mesh.name;
         meshes.push_back(newmesh);
         mMeshes[mesh.name.c_str()] = newmesh;
-        newmesh->name = mesh.name;
 
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
             Primitive newPrimitive;
             newPrimitive.indexCount = static_cast<uint32_t>(asset.accessors[p.indicesAccessor.value()].count);
 
-            std::vector<uint32_t> primitiveIndices;
-            std::vector<Vertex> primitiveVertices;
             {
                 // Add the indices of current primitive to the previous ones
                 fastgltf::Accessor& indexaccessor = asset.accessors[p.indicesAccessor.value()];
-                primitiveIndices.reserve(indexaccessor.count);
+                newPrimitive.indices.reserve(indexaccessor.count);
                 fastgltf::iterateAccessor<std::uint32_t>(asset, indexaccessor,
                     [&](std::uint32_t idx) {
-                        primitiveIndices.push_back(idx);
+                        newPrimitive.indices.push_back(idx);
                     });
             }
             {
                 // Add the vertices of current primitive to the previous ones
                 fastgltf::Accessor& posAccessor = asset.accessors[p.findAttribute("POSITION")->second];
-                primitiveVertices.resize(posAccessor.count);
+                newPrimitive.vertices.resize(posAccessor.count);
                 newPrimitive.vertexCount = posAccessor.count;
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, posAccessor, // Default all the params
                     [&](glm::vec3 v, size_t index) {
@@ -148,7 +148,7 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
                         newvtx.normal = { 1, 0, 0 };
                         newvtx.uv_x = 0;
                         newvtx.uv_y = 0;
-                        primitiveVertices[index] = newvtx;
+                        newPrimitive.vertices[index] = newvtx;
                     });
             }
 
@@ -156,7 +156,7 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
             if (normals != p.attributes.end()) {
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, asset.accessors[normals->second],
                     [&](glm::vec3 v, size_t index) {
-                        primitiveVertices[index].normal = v;
+                        newPrimitive.vertices[index].normal = v;
                     });
             }
 
@@ -164,8 +164,8 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
             if (uv != p.attributes.end()) {
                 fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, asset.accessors[uv->second],
                     [&](glm::vec2 v, size_t index) {
-                        primitiveVertices[index].uv_x = v.x;
-                        primitiveVertices[index].uv_y = v.y;
+                        newPrimitive.vertices[index].uv_x = v.x;
+                        newPrimitive.vertices[index].uv_y = v.y;
                     });
             }
 
@@ -175,11 +175,11 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
                 newPrimitive.material = materials[0];
 
             // Loop the vertices of this surface, find min/max bounds
-            glm::vec3 minpos = primitiveVertices[0].position;
-            glm::vec3 maxpos = primitiveVertices[0].position;
-            for (int i = 0; i < primitiveVertices.size(); i++) {
-                minpos = glm::min(minpos, primitiveVertices[i].position);
-                maxpos = glm::max(maxpos, primitiveVertices[i].position);
+            glm::vec3 minpos = newPrimitive.vertices[0].position;
+            glm::vec3 maxpos = newPrimitive.vertices[0].position;
+            for (int i = 0; i < newPrimitive.vertices.size(); i++) {
+                minpos = glm::min(minpos, newPrimitive.vertices[i].position);
+                maxpos = glm::max(maxpos, newPrimitive.vertices[i].position);
             }
             // Calculate origin and extents from the min/max, use extent length for radius
             newPrimitive.bounds.origin = (maxpos + minpos) / 2.f;
@@ -187,9 +187,14 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
             newPrimitive.bounds.sphereRadius = glm::length(newPrimitive.bounds.extents);
 
             newmesh->primitives.push_back(newPrimitive);
-            
-            modelIndices.insert(modelIndices.end(), primitiveIndices.begin(), primitiveIndices.end());
-            modelVertices.insert(modelVertices.end(), primitiveVertices.begin(), primitiveVertices.end());
+        }
+    }
+
+    // Load vertices and indices in the mapped order of the meshes
+    for (const auto& mesh: mMeshes | std::views::values) {
+        for (const auto& primitive : mesh->primitives) {
+            modelIndices.insert(modelIndices.end(), primitive.indices.begin(), primitive.indices.end());
+            modelVertices.insert(modelVertices.end(), primitive.vertices.begin(), primitive.vertices.end());
         }
     }
 
