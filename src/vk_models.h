@@ -35,7 +35,7 @@ public:
 
     VulkanEngine* mEngine;
 
-    GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset);
+    GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesystem::path modelPath);
     ~GLTFModel();
 
 private:

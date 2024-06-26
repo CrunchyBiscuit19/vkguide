@@ -8,10 +8,10 @@
 
 #include <ranges>
 
-GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
+GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesystem::path modelPath)
     : mEngine(engine)
+    , mName(modelPath.stem().string())
 {
-
     // Load samplers
     for (fastgltf::Sampler& sampler : asset.samplers) {
         VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .pNext = nullptr };
@@ -52,9 +52,11 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
     // Load materials
     for (fastgltf::Material& mat : asset.materials) {
         std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
+        
+        newMat->mName = fmt::format("{}_mat_{}", mName, std::string(mat.name.c_str()));
+        
         materials.push_back(newMat);
-        mMaterials[mat.name.c_str()] = newMat;
-        newMat->mName = std::string(mat.name.c_str());
+        mMaterials[newMat->mName] = newMat;
 
         newMat->mData.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
         newMat->mData.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
@@ -119,7 +121,9 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
     // Load meshes
     for (fastgltf::Mesh& mesh : asset.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
+        
         newmesh->name = mesh.name;
+        
         meshes.push_back(newmesh);
         mMeshes[mesh.name.c_str()] = newmesh;
 
@@ -372,7 +376,7 @@ void GLTFModel::cleanup() const
 
 std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, std::filesystem::path filePath)
 {
-    fmt::println("Loading GLTF Model: {}", filePath.string());
+    fmt::println("Loading GLTF Model: {}", filePath.filename().string());
 
     fastgltf::Parser parser {};
     fastgltf::Asset gltf;
@@ -395,5 +399,5 @@ std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, 
         return {};
     }
 
-    return std::make_shared<GLTFModel>(engine, gltf); 
+    return std::make_shared<GLTFModel>(engine, gltf, filePath); 
 }

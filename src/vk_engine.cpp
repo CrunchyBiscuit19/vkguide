@@ -403,8 +403,8 @@ void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelPa
     for (const auto& modelPath : modelPaths) {
         const auto gltfModel = load_gltf_model(this, modelPath);
         assert(gltfModel.has_value());
-        mLoadedModels[modelPath.filename().string()] = *gltfModel;
-        fmt::println("Loaded GLTF Model: {}", modelPath.string());
+        mLoadedModels[modelPath.stem().string()] = *gltfModel;
+        fmt::println("Loaded GLTF Model: {}", modelPath.filename().string());
     }
     submit_buffer_updates(mBufferCopyBatches.modelBuffers);
     mBufferCopyBatches.modelBuffers.clear();

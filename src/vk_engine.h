@@ -71,6 +71,12 @@ struct BufferCopyBatch {
     std::vector<VkBufferCopy> bufferCopies;
 };
 
+struct IndirectBatch {
+    int matIndex;
+    PbrMaterial* mat;
+    std::vector<VkDrawIndexedIndirectCommand> commands;
+};
+
 class VulkanEngine {
 public:
     // Engine state
