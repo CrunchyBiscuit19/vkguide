@@ -32,11 +32,11 @@ constexpr bool bUseValidationLayers = true;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::filesystem::path> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
-    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+        "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-        "../../assets/toycar/toycar.glb",
+    //    "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
     //    "../../assets/structure/structure.glb",
 };
@@ -790,7 +790,8 @@ void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesO
     indirectCmd.indexCount = primitive.indexCount;
     indirectCmd.firstIndex = indicesOffset; 
 
-    mIndirectBatches[primitive.material.get()].push_back(indirectCmd);
+    mIndirectBatches[primitive.material->mName].mat = primitive.material.get();
+    mIndirectBatches[primitive.material->mName].commands.push_back(indirectCmd);
 
     verticesOffset += primitive.vertexCount;
     indicesOffset += primitive.indexCount;
@@ -820,9 +821,9 @@ void VulkanEngine::update_indirect_buffer()
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     VkDeviceSize indirectBufferOffset = 0;
-    for (const auto& indirectBatch : mIndirectBatches) {
-        auto* currentMaterial = indirectBatch.first;
-        const auto& indirectCommands = mIndirectBatches[currentMaterial];
+    for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
+        auto* currentMaterial = indirectBatch.mat;
+        const auto& indirectCommands = indirectBatch.commands; 
 
         const VkDeviceSize indirectCommandsSize = indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
@@ -904,8 +905,8 @@ void VulkanEngine::update_material_buffer()
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     VkDeviceSize materialConstantsBufferOffset = 0;
-    for (const auto& indirectBatch : mIndirectBatches) {
-        auto* currentMaterial = indirectBatch.first;
+    for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
+        auto* currentMaterial = indirectBatch.mat;
 
         const VkDeviceSize materialConstantsSize = sizeof(MaterialConstants);
 
@@ -930,8 +931,9 @@ void VulkanEngine::update_material_texture_array()
     DescriptorWriter writer;
     int arrayIndex = 0;
 
-    for (const auto& indirectBatch : mIndirectBatches) {
-        const auto* currentMaterial = indirectBatch.first;
+    for (auto& indirectBatch : mIndirectBatches | std::views::values) {
+        const auto* currentMaterial = indirectBatch.mat;
+        indirectBatch.matIndex = arrayIndex;
 
         writer.write_image_array(0, currentMaterial->mData.resources.base.image.imageView, currentMaterial->mData.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex);
         writer.write_image_array(0, currentMaterial->mData.resources.emissive.image.imageView, currentMaterial->mData.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex + 1);
@@ -1011,15 +1013,16 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     vkCmdBindIndexBuffer(cmd, mGlobalIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     VkDeviceSize indirectBufferOffset = 0;
-    for (const auto& indirectBatch : mIndirectBatches) {
-        PbrMaterial* currentMaterial = indirectBatch.first;
+    for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
+        PbrMaterial* currentMaterial = indirectBatch.mat;
+        const auto& indirectCommands = indirectBatch.commands; 
 
         vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &mPushConstants);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline); // TODO Check for same pipeline in previous loop
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArray.set, 0, nullptr);
 
-        vkCmdDrawIndexedIndirect(cmd, mGlobalIndirectBuffer.buffer, indirectBufferOffset, indirectBatch.second.size(), sizeof(VkDrawIndexedIndirectCommand));
-        indirectBufferOffset += indirectBatch.second.size() * sizeof(VkDrawIndexedIndirectCommand);
+        vkCmdDrawIndexedIndirect(cmd, mGlobalIndirectBuffer.buffer, indirectBufferOffset, indirectCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
+        indirectBufferOffset += indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
         mStats.drawcall_count++;
     }

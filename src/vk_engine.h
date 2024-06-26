@@ -162,7 +162,7 @@ public:
     DescriptorCombined mMaterialTexturesArray;
 
     // Store indirect commands per material
-    std::map<PbrMaterial*, std::vector<VkDrawIndexedIndirectCommand>> mIndirectBatches;
+    std::map<std::string, IndirectBatch> mIndirectBatches;
     AllocatedBuffer mGlobalIndirectBuffer;
 
     // Samplers
