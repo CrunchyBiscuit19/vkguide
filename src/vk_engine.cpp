@@ -30,15 +30,15 @@ constexpr bool bUseValidationLayers = true;
 #endif
 
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
-const std::vector<std::string> modelFilepaths {
+const std::vector<std::filesystem::path> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
-        "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-    //    "../../assets/toycar/toycar.glb",
+        "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
-        "../../assets/structure/structure.glb",
+    //    "../../assets/structure/structure.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -398,13 +398,13 @@ void VulkanEngine::init_default_data()
     mSamplerDeletionQueue.samplers.push_resource(mDevice, mDefaultSamplerNearest, nullptr);
 }
 
-void VulkanEngine::init_models(const std::vector<std::string>& modelPaths)
+void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelPaths)
 {
     for (const auto& modelPath : modelPaths) {
         const auto gltfModel = load_gltf_model(this, modelPath);
         assert(gltfModel.has_value());
-        mLoadedModels[std::filesystem::path(modelPath).filename().string()] = *gltfModel;
-        fmt::println("Loaded GLTF Model: {}", modelPath);
+        mLoadedModels[modelPath.filename().string()] = *gltfModel;
+        fmt::println("Loaded GLTF Model: {}", modelPath.string());
     }
     submit_buffer_updates(mBufferCopyBatches.modelBuffers);
     mBufferCopyBatches.modelBuffers.clear();
@@ -1201,7 +1201,7 @@ void VulkanEngine::run()
         if (ImGui::Begin("Camera")) {
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mMainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mMainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
-            ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 1.f, "%.2f");
+            ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 100.f, "%.2f");
             ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z); 
             ImGui::Text("Pitch: %.1f, Yaw: %.1f", mMainCamera.pitch, mMainCamera.yaw);
             ImGui::End();

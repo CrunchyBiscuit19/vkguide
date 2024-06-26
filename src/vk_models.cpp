@@ -54,6 +54,7 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
         std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
         materials.push_back(newMat);
         mMaterials[mat.name.c_str()] = newMat;
+        newMat->mName = std::string(mat.name.c_str());
 
         newMat->mData.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
         newMat->mData.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
@@ -192,9 +193,11 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset)
 
     // Load vertices and indices in the mapped order of the meshes
     for (const auto& mesh: mMeshes | std::views::values) {
-        for (const auto& primitive : mesh->primitives) {
+        for (auto& primitive : mesh->primitives) {
             modelIndices.insert(modelIndices.end(), primitive.indices.begin(), primitive.indices.end());
             modelVertices.insert(modelVertices.end(), primitive.vertices.begin(), primitive.vertices.end());
+            primitive.indices.clear();
+            primitive.vertices.clear();
         }
     }
 
@@ -367,9 +370,9 @@ void GLTFModel::cleanup() const
         vkDestroySampler(device, sampler, nullptr);
 }
 
-std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, std::string filePath)
+std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, std::filesystem::path filePath)
 {
-    fmt::println("Loading GLTF Model: {}", filePath);
+    fmt::println("Loading GLTF Model: {}", filePath.string());
 
     fastgltf::Parser parser {};
     fastgltf::Asset gltf;
@@ -377,7 +380,6 @@ std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, 
     constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember | fastgltf::Options::AllowDouble | fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages;
 
     data.loadFromFile(filePath);
-    std::filesystem::path path = filePath;
 
     auto type = fastgltf::determineGltfFileType(&data);
     if (type == fastgltf::GltfType::Invalid) {
@@ -385,7 +387,7 @@ std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, 
         return {};
     }
 
-    auto load = (type == fastgltf::GltfType::glTF) ? (parser.loadGLTF(&data, path.parent_path(), gltfOptions)) : (parser.loadBinaryGLTF(&data, path.parent_path(), gltfOptions));
+    auto load = (type == fastgltf::GltfType::glTF) ? (parser.loadGLTF(&data, filePath.parent_path(), gltfOptions)) : (parser.loadBinaryGLTF(&data, filePath.parent_path(), gltfOptions));
     if (load) {
         gltf = std::move(load.get());
     } else {

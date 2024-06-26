@@ -221,7 +221,7 @@ public:
     void init_pipelines();
     void init_buffers();
     void init_default_data();
-    void init_models(const std::vector<std::string>& modelPaths);
+    void init_models(const std::vector<std::filesystem::path>& modelPaths);
     void init_push_constants();
 
     void create_swapchain(uint32_t width, uint32_t height);

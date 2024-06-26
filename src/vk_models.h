@@ -19,6 +19,8 @@ struct ModelBuffers {
 
 class GLTFModel {
 public:
+    std::string mName;
+
     ModelBuffers mModelBuffers;
 
     std::unordered_map<std::string, std::shared_ptr<Node>> mNodes;
@@ -44,4 +46,4 @@ private:
     void cleanup() const;
 };
 
-std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, std::string filePath);
+std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, std::filesystem::path filePath);

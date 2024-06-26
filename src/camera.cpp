@@ -26,6 +26,7 @@ void Camera::init()
             travel.x = -1;
         if (keyState[SDL_SCANCODE_D])
             travel.x = 1;
+        travel *= 0.1f;
     };
     movementFuns[LOOKANDGO] = [this]() -> void {
         const SDL_Keymod modState = SDL_GetModState();
@@ -37,6 +38,7 @@ void Camera::init()
             travel.x = -1;
         if (keyState[SDL_SCANCODE_D])
             travel.x = 1;
+        travel *= 0.1f;
     };
 }
 

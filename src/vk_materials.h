@@ -42,6 +42,8 @@ class PbrMaterial {
     VulkanEngine* mEngine;
 
 public:
+    std::string mName;
+
     MaterialPipeline mPipeline;
     PbrData mData;
 
