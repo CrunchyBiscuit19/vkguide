@@ -143,8 +143,8 @@ struct SSBOAddresses {
     VkDeviceAddress vertexBuffer;
     VkDeviceAddress instanceBuffer;
     VkDeviceAddress sceneBuffer;
-    VkDeviceAddress materialsBuffer;
-    int materialsIndex;
+    VkDeviceAddress materialBuffer;
+    int materialIndex;
 };
 
 struct SceneData {

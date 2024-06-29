@@ -32,11 +32,11 @@ constexpr bool bUseValidationLayers = true;
 const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
 const std::vector<std::filesystem::path> modelFilepaths {
     //    "../../assets/scifihelmet/SciFiHelmet.glb",
-        "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
+    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-    //    "../../assets/toycar/toycar.glb",
+        "../../assets/toycar/toycar.glb",
     //    "../../assets/sponza/Sponza.gltf",
     //    "../../assets/structure/structure.glb",
 };
@@ -317,7 +317,7 @@ void VulkanEngine::init_descriptors()
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialTexturesArraySize);
-        mMaterialTexturesArray.layout = builder.build(mDevice, VK_SHADER_STAGE_FRAGMENT_BIT, true);
+        mMaterialTexturesArray.layout = builder.build(mDevice, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true);
     }
     // Allocate a descriptor set for texture array
     mMaterialTexturesArray.set = mGlobalDescriptorAllocator.allocate(mDevice, mMaterialTexturesArray.layout, true, materialTexturesArraySize);
@@ -419,7 +419,7 @@ void VulkanEngine::init_push_constants()
     deviceAddressInfo.buffer = mSceneBuffer.buffer;
     mPushConstants.sceneBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
     deviceAddressInfo.buffer = mMaterialConstantsBuffer.buffer;
-    mPushConstants.materialsBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
+    mPushConstants.materialBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
 }
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
@@ -531,7 +531,7 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     VkPushConstantRange ssboAddressesRange {};
     ssboAddressesRange.offset = 0;
     ssboAddressesRange.size = sizeof(SSBOAddresses);
-    ssboAddressesRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ssboAddressesRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     std::vector<VkDescriptorSetLayout> layouts = { mMaterialTexturesArray.layout };
     VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
@@ -876,7 +876,7 @@ void VulkanEngine::update_scene_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(sizeof(SceneData), mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    mSceneData.ambientColor = glm::vec4(.1f);
+    mSceneData.ambientColor = glm::vec4(1.f);
     mSceneData.sunlightColor = glm::vec4(1.f);
     mSceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
     mMainCamera.updatePosition(mStats.frametime, static_cast<float>(ONE_SECOND_IN_MILLISECONDS / EXPECTED_FRAME_RATE));
@@ -1017,7 +1017,9 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         PbrMaterial* currentMaterial = indirectBatch.mat;
         const auto& indirectCommands = indirectBatch.commands; 
 
-        vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SSBOAddresses), &mPushConstants);
+        mPushConstants.materialIndex = indirectBatch.matIndex;
+
+        vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SSBOAddresses), &mPushConstants);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline); // TODO Check for same pipeline in previous loop
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArray.set, 0, nullptr);
 
