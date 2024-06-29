@@ -36,8 +36,8 @@ const std::vector<std::filesystem::path> modelFilepaths {
     //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
     //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-        "../../assets/toycar/toycar.glb",
-    //    "../../assets/sponza/Sponza.gltf",
+    //    "../../assets/toycar/toycar.glb",
+        "../../assets/sponza/Sponza.gltf",
     //    "../../assets/structure/structure.glb",
 };
 

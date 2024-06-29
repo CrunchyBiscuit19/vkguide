@@ -35,28 +35,42 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     std::vector<Vertex> modelVertices;
 
     // Load textures, with checkerboard as placeholder for loading errors
+    int imageIndex = 0;
     images.reserve(asset.images.size());
+
     for (fastgltf::Image& image : asset.images) {
+        auto imageName = std::string(image.name);
+        if (imageName.empty()) {
+            imageName = fmt::format("{}", imageIndex);
+        }
+
         std::optional<AllocatedImage> loadedImage = load_image(engine, asset, image);
         if (loadedImage.has_value()) {
             images.push_back(*loadedImage);
-            mImages[image.name.c_str()] = *loadedImage;
-            fmt::println("Loaded GLTF texture: {}", image.name);
+            mImages[fmt::format("{}_image_{}", mName, imageName)] = *loadedImage;
         } else {
             // Failed to load -> default checkerboard texture
-            images.push_back(engine->mStockImages["grey"]);
-            fmt::println("Failed to load GLTF texture: {}", image.name);
+            images.push_back(engine->mStockImages["checkerboard"]);
         }
+
+        imageIndex++;
     }
 
     // Load materials
+    int materialIndex = 0;
+    materials.reserve(asset.materials.size());
+
     for (fastgltf::Material& mat : asset.materials) {
         std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
         
-        newMat->mName = fmt::format("{}_mat_{}", mName, std::string(mat.name.c_str()));
+        auto matName = std::string(mat.name);
+        if (matName.empty()) {
+            matName = fmt::format("{}", materialIndex);
+        }
+        newMat->mName = fmt::format("{}_mat_{}", mName, matName);
+        mMaterials[newMat->mName] = newMat;
         
         materials.push_back(newMat);
-        mMaterials[newMat->mName] = newMat;
 
         newMat->mData.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
         newMat->mData.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
@@ -116,6 +130,8 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
         }
 
         newMat->create_material();
+
+        materialIndex++;
     }
 
     // Load meshes
