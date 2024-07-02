@@ -29,16 +29,17 @@ constexpr bool bUseValidationLayers = false;
 constexpr bool bUseValidationLayers = true;
 #endif
 
-const std::string pipelineCacheFile = "../../bin/pipeline_cache.bin";
+const std::string pipelineCachePath = "../../bin/pipeline_cache.bin";
+const std::filesystem::path modelRootPath { "../../assets" };
 const std::vector<std::filesystem::path> modelFilepaths {
-    //    "../../assets/scifihelmet/SciFiHelmet.glb",
-    //    "../../assets/stainedglasslamp/StainedGlassLamp.gltf",
-    //    "../../assets/stainedglasslamp/StainedGlassLamp4Meshes.gltf",
-    //    "../../assets/AntiqueCamera/AntiqueCamera.glb",
-    //    "../../assets/AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-    //    "../../assets/toycar/toycar.glb",
-        "../../assets/sponza/Sponza.gltf",
-    //    "../../assets/structure/structure.glb",
+    //    "scifihelmet/SciFiHelmet.glb",
+        "stainedglasslamp/StainedGlassLamp.gltf",
+    //    "stainedglasslamp/StainedGlassLamp4Meshes.gltf",
+        "AntiqueCamera/AntiqueCamera.glb",
+    //    "AntiqueCamera/AntiqueCameraSingleMesh.gltf"
+    //    "toycar/toycar.glb",
+    //    "sponza/Sponza.gltf",
+    //    "structure/structure.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -341,7 +342,7 @@ void VulkanEngine::init_descriptors()
 
 void VulkanEngine::init_pipeline_caches()
 {
-    const VkPipelineCacheCreateInfo pipelineCacheCreateInfo = read_pipeline_cache(pipelineCacheFile);
+    const VkPipelineCacheCreateInfo pipelineCacheCreateInfo = read_pipeline_cache(pipelineCachePath);
     VK_CHECK(vkCreatePipelineCache(mDevice, &pipelineCacheCreateInfo, nullptr, &mPipelineCache));
 }
 
@@ -398,16 +399,18 @@ void VulkanEngine::init_default_data()
     mSamplerDeletionQueue.samplers.push_resource(mDevice, mDefaultSamplerNearest, nullptr);
 }
 
-void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelPaths)
+void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelFilePaths)
 {
-    for (const auto& modelPath : modelPaths) {
-        const auto gltfModel = load_gltf_model(this, modelPath);
+    for (const auto& modelFilePath : modelFilePaths) {
+        auto fullModelPath = modelRootPath / modelFilePath;
+        const auto gltfModel = load_gltf_model(this, fullModelPath);
         assert(gltfModel.has_value());
-        mLoadedModels[modelPath.stem().string()] = *gltfModel;
-        fmt::println("Loaded GLTF Model: {}", modelPath.filename().string());
+        mLoadedModels[modelFilePath.stem().string()] = *gltfModel;
+        fmt::println("Loaded GLTF Model: {}", modelFilePath.filename().string());
     }
     submit_buffer_updates(mBufferCopyBatches.modelBuffers);
     mBufferCopyBatches.modelBuffers.clear();
+    mBufferDeletionQueue.modelLoadStagingBuffers.flush();
 }
 
 void VulkanEngine::init_push_constants()
@@ -687,8 +690,8 @@ ModelBuffers VulkanEngine::upload_model(std::vector<uint32_t>& srcIndexVector, s
 {
     ModelBuffers modelBuffers;
 
-    static const AllocatedBuffer stagingBuffer = create_staging_buffer(static_cast<size_t>(DEFAULT_VERTEX_BUFFER_SIZE) + DEFAULT_INDEX_BUFFER_SIZE, mBufferDeletionQueue.lifetimeBuffers);
-    static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+    const AllocatedBuffer stagingBuffer = create_staging_buffer(static_cast<size_t>(DEFAULT_VERTEX_BUFFER_SIZE) + DEFAULT_INDEX_BUFFER_SIZE, mBufferDeletionQueue.modelLoadStagingBuffers);
+    void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     const VkDeviceSize srcVertexVectorSize = srcVertexVector.size() * sizeof(Vertex);
     const VkDeviceSize srcIndexVectorSize = srcIndexVector.size() * sizeof(uint32_t);
@@ -698,7 +701,7 @@ ModelBuffers VulkanEngine::upload_model(std::vector<uint32_t>& srcIndexVector, s
 
     memcpy(static_cast<char*>(stagingAddress) + 0, srcVertexVector.data(), srcVertexVectorSize);
     memcpy(static_cast<char*>(stagingAddress) + srcVertexVectorSize, srcIndexVector.data(), srcIndexVectorSize);
-    
+
     VkBufferCopy vertexCopy {};
     vertexCopy.dstOffset = 0;
     vertexCopy.srcOffset = 0;
@@ -788,7 +791,7 @@ void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesO
     indirectCmd.firstInstance = 0;
     indirectCmd.vertexOffset = verticesOffset;
     indirectCmd.indexCount = primitive.indexCount;
-    indirectCmd.firstIndex = indicesOffset; 
+    indirectCmd.firstIndex = indicesOffset;
 
     mIndirectBatches[primitive.material->mName].mat = primitive.material.get();
     mIndirectBatches[primitive.material->mName].commands.push_back(indirectCmd);
@@ -823,7 +826,7 @@ void VulkanEngine::update_indirect_buffer()
     VkDeviceSize indirectBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
         auto* currentMaterial = indirectBatch.mat;
-        const auto& indirectCommands = indirectBatch.commands; 
+        const auto& indirectCommands = indirectBatch.commands;
 
         const VkDeviceSize indirectCommandsSize = indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
@@ -851,7 +854,7 @@ void VulkanEngine::update_instanced_buffer()
     std::vector<InstanceData> instanceData;
     instanceData.resize(OBJECT_COUNT);
     for (int i = 0; i < OBJECT_COUNT; i++) {
-        instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { 0, 0, 0 });
+        instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { static_cast<float>(OBJECT_COUNT * i), 0, 0 });
         instanceData[i].rotation = glm::toMat4(rotation(glm::vec3(), glm::vec3()));
         instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 3.f });
     }
@@ -1015,7 +1018,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     VkDeviceSize indirectBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
         PbrMaterial* currentMaterial = indirectBatch.mat;
-        const auto& indirectCommands = indirectBatch.commands; 
+        const auto& indirectCommands = indirectBatch.commands;
 
         mPushConstants.materialIndex = indirectBatch.matIndex;
 
@@ -1207,7 +1210,7 @@ void VulkanEngine::run()
             ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mMainCamera.movementMode).data());
             ImGui::Text("[F2] Mouse Mode: %s", (mMainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
             ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 100.f, "%.2f");
-            ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z); 
+            ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z);
             ImGui::Text("Pitch: %.1f, Yaw: %.1f", mMainCamera.pitch, mMainCamera.yaw);
             ImGui::End();
         }
@@ -1268,7 +1271,7 @@ void VulkanEngine::cleanup_descriptors()
 
 void VulkanEngine::cleanup_pipeline_caches()
 {
-    write_pipeline_cache(pipelineCacheFile);
+    write_pipeline_cache(pipelineCachePath);
     vkDestroyPipelineCache(mDevice, mPipelineCache, nullptr);
 }
 
@@ -1293,7 +1296,7 @@ void VulkanEngine::cleanup_buffers()
 {
     mBufferDeletionQueue.lifetimeBuffers.flush();
     mBufferDeletionQueue.perDrawBuffers.flush();
-    mBufferDeletionQueue.tempBuffers.flush();
+    mBufferDeletionQueue.modelLoadStagingBuffers.flush();
 }
 
 void VulkanEngine::cleanup_imgui() const

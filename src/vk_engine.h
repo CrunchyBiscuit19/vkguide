@@ -29,7 +29,7 @@ constexpr unsigned int MAX_INDIRECT_COMMANDS = 10000;
 
 constexpr unsigned int MAX_MATERIALS = 10000;
 
-constexpr unsigned int OBJECT_COUNT = 1;
+constexpr unsigned int OBJECT_COUNT = 3;
 
 struct EngineStats {
     float frametime;
@@ -203,7 +203,7 @@ public:
     struct BufferDeletionQueue {
         DeletionQueue<VkBuffer> lifetimeBuffers;
         DeletionQueue<VkBuffer> perDrawBuffers;
-        DeletionQueue<VkBuffer> tempBuffers;
+        DeletionQueue<VkBuffer> modelLoadStagingBuffers;
     } mBufferDeletionQueue;
 
     struct DescriptorDeletionQueue {
@@ -227,7 +227,7 @@ public:
     void init_pipelines();
     void init_buffers();
     void init_default_data();
-    void init_models(const std::vector<std::filesystem::path>& modelPaths);
+    void init_models(const std::vector<std::filesystem::path>& modelFilePaths);
     void init_push_constants();
 
     void create_swapchain(uint32_t width, uint32_t height);

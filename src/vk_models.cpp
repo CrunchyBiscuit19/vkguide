@@ -62,14 +62,14 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
 
     for (fastgltf::Material& mat : asset.materials) {
         std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
-        
+
         auto matName = std::string(mat.name);
         if (matName.empty()) {
             matName = fmt::format("{}", materialIndex);
         }
         newMat->mName = fmt::format("{}_mat_{}", mName, matName);
         mMaterials[newMat->mName] = newMat;
-        
+
         materials.push_back(newMat);
 
         newMat->mData.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
@@ -137,9 +137,9 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     // Load meshes
     for (fastgltf::Mesh& mesh : asset.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
-        
+
         newmesh->name = mesh.name;
-        
+
         meshes.push_back(newmesh);
         mMeshes[mesh.name.c_str()] = newmesh;
 
@@ -212,7 +212,7 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     }
 
     // Load vertices and indices in the mapped order of the meshes
-    for (const auto& mesh: mMeshes | std::views::values) {
+    for (const auto& mesh : mMeshes | std::views::values) {
         for (auto& primitive : mesh->primitives) {
             modelIndices.insert(modelIndices.end(), primitive.indices.begin(), primitive.indices.end());
             modelVertices.insert(modelVertices.end(), primitive.vertices.begin(), primitive.vertices.end());
@@ -415,5 +415,5 @@ std::optional<std::shared_ptr<GLTFModel>> load_gltf_model(VulkanEngine* engine, 
         return {};
     }
 
-    return std::make_shared<GLTFModel>(engine, gltf, filePath); 
+    return std::make_shared<GLTFModel>(engine, gltf, filePath);
 }
