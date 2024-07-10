@@ -24,7 +24,7 @@
 #include <thread>
 
 #ifdef NDEBUG
-constexpr bool bUseValidationLayers = false;
+constexpr bool bUseValidationLayers = true;
 #else
 constexpr bool bUseValidationLayers = true;
 #endif

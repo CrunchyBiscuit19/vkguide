@@ -1,5 +1,5 @@
-﻿#include <vk_descriptors.h>
-#include "vk_types.h"
+﻿#include "vk_types.h"
+#include <vk_descriptors.h>
 
 void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType type, uint32_t count)
 {
@@ -29,18 +29,19 @@ VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device, VkShaderSt
     info.flags = 0;
 
     VkDescriptorBindingFlags bindlessFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    VkDescriptorSetLayoutBindingFlagsCreateInfo extended_info { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
+    extended_info.pNext = nullptr;
+    extended_info.bindingCount = static_cast<uint32_t>(mBindings.size());
+    extended_info.pBindingFlags = &bindlessFlags;
     if (useBindless) {
         info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
-        VkDescriptorSetLayoutBindingFlagsCreateInfoEXT extended_info { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT, nullptr };
-        extended_info.bindingCount = static_cast<uint32_t>(mBindings.size());
-        extended_info.pBindingFlags = &bindlessFlags;
         info.pNext = &extended_info;
     }
 
     VkDescriptorSetLayout setLayout;
     VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &setLayout));
 
-	return setLayout;
+    return setLayout;
 }
 
 void DescriptorAllocatorGrowable::init(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
@@ -85,19 +86,18 @@ VkDescriptorSet DescriptorAllocatorGrowable::allocate(VkDevice device, VkDescrip
     // Get or create a pool to allocate from
     VkDescriptorPool poolToUse = get_pool(device);
 
-    VkDescriptorSetAllocateInfo allocInfo {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    VkDescriptorSetAllocateInfo allocInfo { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     allocInfo.pNext = nullptr;
     allocInfo.descriptorPool = poolToUse;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &layout;
 
-    if (useBindless) {
-	    VkDescriptorSetVariableDescriptorCountAllocateInfoEXT countInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
-	    uint32_t maxBinding = maxBindings - 1;
-	    countInfo.descriptorSetCount = 1;
-	    countInfo.pDescriptorCounts = &maxBinding;
-	    allocInfo.pNext = &countInfo;
-    }
+    VkDescriptorSetVariableDescriptorCountAllocateInfoEXT countInfo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
+    uint32_t maxBinding = maxBindings - 1;
+    countInfo.descriptorSetCount = 1;
+    countInfo.pDescriptorCounts = &maxBinding;
+    if (useBindless) 
+        allocInfo.pNext = &countInfo;
 
     VkDescriptorSet ds;
     const VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &ds);
