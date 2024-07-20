@@ -29,7 +29,7 @@ constexpr unsigned int MAX_INDIRECT_COMMANDS = 10000;
 
 constexpr unsigned int MAX_MATERIALS = 10000;
 
-constexpr unsigned int OBJECT_COUNT = 3;
+constexpr unsigned int OBJECT_COUNT = 1;
 
 struct EngineStats {
     float frametime;

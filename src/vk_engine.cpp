@@ -24,7 +24,7 @@
 #include <thread>
 
 #ifdef NDEBUG
-constexpr bool bUseValidationLayers = true;
+constexpr bool bUseValidationLayers = false;
 #else
 constexpr bool bUseValidationLayers = true;
 #endif
@@ -33,13 +33,13 @@ const std::string pipelineCachePath = "../../bin/pipeline_cache.bin";
 const std::filesystem::path modelRootPath { "../../assets" };
 const std::vector<std::filesystem::path> modelFilepaths {
     //    "scifihelmet/SciFiHelmet.glb",
-        "stainedglasslamp/StainedGlassLamp.gltf",
+    //    "stainedglasslamp/StainedGlassLamp.gltf",
     //    "stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "AntiqueCamera/AntiqueCamera.glb",
     //    "AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-    //    "toycar/toycar.glb",
-    //    "sponza/Sponza.gltf",
-    //    "structure/structure.glb",
+    //    "toycar/toycar.gltf",
+        "sponza/Sponza.gltf",
+    //    "structure/structure.gltf",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -932,19 +932,19 @@ void VulkanEngine::update_material_buffer()
 void VulkanEngine::update_material_texture_array()
 {
     DescriptorWriter writer;
-    int arrayIndex = 0;
+    int matIndex = 0;
 
     for (auto& indirectBatch : mIndirectBatches | std::views::values) {
         const auto* currentMaterial = indirectBatch.mat;
-        indirectBatch.matIndex = arrayIndex;
+        indirectBatch.matIndex = matIndex;
 
-        writer.write_image_array(0, currentMaterial->mData.resources.base.image.imageView, currentMaterial->mData.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex);
-        writer.write_image_array(0, currentMaterial->mData.resources.emissive.image.imageView, currentMaterial->mData.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex + 1);
-        writer.write_image_array(0, currentMaterial->mData.resources.metallicRoughness.image.imageView, currentMaterial->mData.resources.metallicRoughness.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex + 2);
-        writer.write_image_array(0, currentMaterial->mData.resources.normal.image.imageView, currentMaterial->mData.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex + 3);
-        writer.write_image_array(0, currentMaterial->mData.resources.occlusion.image.imageView, currentMaterial->mData.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, arrayIndex + 4);
+        writer.write_image_array(0, currentMaterial->mData.resources.base.image.imageView, currentMaterial->mData.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 0);
+        writer.write_image_array(0, currentMaterial->mData.resources.emissive.image.imageView, currentMaterial->mData.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 1);
+        writer.write_image_array(0, currentMaterial->mData.resources.metallicRoughness.image.imageView, currentMaterial->mData.resources.metallicRoughness.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 2);
+        writer.write_image_array(0, currentMaterial->mData.resources.normal.image.imageView, currentMaterial->mData.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 3);
+        writer.write_image_array(0, currentMaterial->mData.resources.occlusion.image.imageView, currentMaterial->mData.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 4);
 
-        arrayIndex += 5;
+        matIndex++;
     }
 
     writer.update_set(mDevice, mMaterialTexturesArray.set);

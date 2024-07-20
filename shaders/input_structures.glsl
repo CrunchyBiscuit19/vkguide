@@ -39,7 +39,7 @@ layout(buffer_reference, std430) readonly buffer SceneBuffer{
 	SceneData sceneData;
 };
 layout(buffer_reference, std430) readonly buffer MaterialBuffer{ 
-	Material material;
+	Material materials[];
 };
 
 // Push constants block

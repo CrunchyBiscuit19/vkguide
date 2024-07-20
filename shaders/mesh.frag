@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_debug_printf : enable
 
 #include "input_structures.glsl"
 
@@ -15,12 +16,15 @@ void main()
 	vec4 ambientColor = constants.sceneBuffer.sceneData.ambientColor;
 	vec4 sunlightColor = constants.sceneBuffer.sceneData.sunlightColor;
 	vec4 sunlightDirection = constants.sceneBuffer.sceneData.sunlightDirection;
-	int materialIndex = constants.materialIndex;
-	vec4 baseFactor = constants.materialBuffer.material.baseFactor;
+
+	int materialFactorIndex = constants.materialIndex;
+	int materialTextureIndex = materialFactorIndex * 5;
+	int baseTextureIndex = materialTextureIndex + 0;
+	vec4 baseFactor = constants.materialBuffer.materials[materialFactorIndex].baseFactor;
 
 	float lightValue = max(dot(inNormal, sunlightDirection.xyz), 0.1f);
 	
-	vec4 color = texture(materialTextures[materialIndex], inUV) * baseFactor;
+	vec4 color = texture(materialTextures[baseTextureIndex], inUV) * baseFactor;
 	vec4 ambient = color * ambientColor;
 
 	outFragColor = vec4(color * lightValue * sunlightColor.w + ambient);
