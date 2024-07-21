@@ -138,10 +138,10 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     for (fastgltf::Mesh& mesh : asset.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
 
-        newmesh->name = mesh.name;
+        newmesh->name = fmt::format("{}_mesh_{}", mName, mesh.name);;
 
         meshes.push_back(newmesh);
-        mMeshes[mesh.name.c_str()] = newmesh;
+        mMeshes[newmesh->name] = newmesh;
 
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {

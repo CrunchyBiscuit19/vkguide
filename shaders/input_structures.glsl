@@ -41,6 +41,9 @@ layout(buffer_reference, std430) readonly buffer SceneBuffer{
 layout(buffer_reference, std430) readonly buffer MaterialBuffer{ 
 	Material materials[];
 };
+layout(buffer_reference, std430) readonly buffer TransformBuffer{ 
+	mat4 transforms[];
+};
 
 // Push constants block
 layout( push_constant, std430 ) uniform PushConstants
@@ -49,5 +52,7 @@ layout( push_constant, std430 ) uniform PushConstants
 	InstanceBuffer instanceBuffer;
 	SceneBuffer sceneBuffer;
 	MaterialBuffer materialBuffer; 
-	int materialIndex;
+	TransformBuffer transformBuffer
+	uint materialIndex;
+	uint meshIndex;
 } constants;

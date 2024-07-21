@@ -45,7 +45,7 @@ struct Node {
 
 struct MeshData {
     std::string name;
-    std::vector<Primitive> primitives; // Mesh primitives, one material per primitve
+    std::vector<Primitive> primitives;
 };
 
 struct MeshNode : Node {

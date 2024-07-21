@@ -23,6 +23,7 @@
 #include <vk_descriptors.h>
 
 struct PbrData;
+struct PbrMaterial;
 struct MeshData;
 
 template <class T0>
@@ -144,7 +145,9 @@ struct SSBOAddresses {
     VkDeviceAddress instanceBuffer;
     VkDeviceAddress sceneBuffer;
     VkDeviceAddress materialBuffer;
+    VkDeviceAddress transformBuffer;
     uint32_t materialIndex;
+    uint32_t meshIndex;
 };
 
 struct SceneData {
@@ -164,6 +167,46 @@ struct InstanceData {
 struct DescriptorCombined {
     VkDescriptorSet set;
     VkDescriptorSetLayout layout;
+};
+
+struct BufferCopyBatch {
+    VkBuffer srcBuffer;
+    VkBuffer dstBuffer;
+    std::vector<VkBufferCopy> bufferCopies;
+}; 
+
+struct IndirectBatchGroup {
+    std::string matName;
+    std::string meshName;
+
+    inline bool operator==(const IndirectBatchGroup& other) const
+    {
+        return (matName == other.matName && meshName == other.meshName);
+    }
+
+    inline bool operator<(const IndirectBatchGroup& other) const
+    {
+        if (matName != other.matName) {
+            return (matName < other.matName);
+        }
+        return meshName < other.meshName;
+    }
+};
+
+template <>
+struct std::hash<IndirectBatchGroup> {
+    // Compute individual hash values for strings
+    // Combine them using XOR and bit shifting
+    std::size_t operator()(const IndirectBatchGroup& k) const
+    {
+        return ((std::hash<std::string>()(k.matName) ^ (std::hash<std::string>()(k.meshName) << 1)) >> 1);
+    }
+};
+
+struct IndirectBatchData {
+    PbrMaterial* mat;
+    MeshData* mesh;
+    std::vector<VkDrawIndexedIndirectCommand> commands;
 };
 
 #define VK_CHECK(x)                                                          \

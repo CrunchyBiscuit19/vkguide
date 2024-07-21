@@ -6,8 +6,8 @@
 #include <camera.h>
 #include <cvars.h>
 #include <vk_descriptors.h>
-#include <vk_models.h>
 #include <vk_materials.h>
+#include <vk_models.h>
 #include <vk_types.h>
 
 #include <map>
@@ -23,11 +23,13 @@ constexpr unsigned int MAX_IMAGE_SIZE = 100 * ONE_MEBIBYTE_IN_BYTES;
 constexpr unsigned int DEFAULT_VERTEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
 constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
 
-constexpr unsigned int MAX_INSTANCES = 10000;
+constexpr unsigned int MAX_INSTANCES = 5000;
 
 constexpr unsigned int MAX_INDIRECT_COMMANDS = 10000;
 
-constexpr unsigned int MAX_MATERIALS = 10000;
+constexpr unsigned int MAX_MATERIALS = 5000;
+
+constexpr unsigned int MAX_TRANSFORM_MATRICES = 5000;
 
 constexpr unsigned int OBJECT_COUNT = 1;
 
@@ -63,18 +65,6 @@ struct FrameData {
         mFrameDeletionQueue.bufferDeletion.flush();
         mFrameDescriptors.destroy_pools(device);
     }
-};
-
-struct BufferCopyBatch {
-    VkBuffer srcBuffer;
-    VkBuffer dstBuffer;
-    std::vector<VkBufferCopy> bufferCopies;
-};
-
-struct IndirectBatch {
-    int matIndex;
-    PbrMaterial* mat;
-    std::vector<VkDrawIndexedIndirectCommand> commands;
 };
 
 class VulkanEngine {
@@ -158,12 +148,16 @@ public:
 
     // Models and materials
     std::unordered_map<std::string, std::shared_ptr<GLTFModel>> mLoadedModels;
+    std::vector<glm::mat4> mMeshTransformMatrices;
+    AllocatedBuffer mMeshTransformsBuffer;
     AllocatedBuffer mMaterialConstantsBuffer;
     DescriptorCombined mMaterialTexturesArray;
 
     // Store indirect commands per material
-    std::map<std::string, IndirectBatch> mIndirectBatches;
+    std::map<IndirectBatchGroup, IndirectBatchData> mIndirectBatches;
     AllocatedBuffer mGlobalIndirectBuffer;
+    std::unordered_map<MeshData*,int> mMeshIndexes; // These 2 unordered maps exist mostly to keep track of which meshes and materials have already been processed
+    std::unordered_map<PbrMaterial*,int> mMatIndexes;
 
     // Samplers
     VkSampler mDefaultSamplerLinear;
@@ -251,15 +245,20 @@ public:
     void create_vertex_index_buffers();
     void create_instance_buffer();
     void create_scene_buffer();
+    void create_mesh_transform_buffer();
     void create_material_constants_buffer();
     void create_indirect_buffer();
 
     void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
-    void update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset);
+    void generate_indirect_commands(MeshData& mesh, Primitive& primitive, int& verticesOffset, int& indicesOffset);
+    void assign_indirect_groups(MeshData& mesh, Primitive& primitive);
+    void traverse_nodes(Node& startingNode, std::vector<glm::mat4>& meshWorldTransformMatrices, int& meshIndex);
     void iterate_models();
+
     void update_indirect_buffer();
     void update_instanced_buffer();
     void update_scene_buffer();
+    void update_mesh_transform_buffer();
     void update_material_buffer();
     void update_material_texture_array();
     void submit_buffer_updates(std::vector<BufferCopyBatch>& bufferCopyBatches) const;

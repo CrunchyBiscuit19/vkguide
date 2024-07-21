@@ -37,8 +37,8 @@ const std::vector<std::filesystem::path> modelFilepaths {
     //    "stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "AntiqueCamera/AntiqueCamera.glb",
     //    "AntiqueCamera/AntiqueCameraSingleMesh.gltf"
-    //    "toycar/toycar.gltf",
-        "sponza/Sponza.gltf",
+    "toycar/toycar.gltf",
+    //    "sponza/Sponza.gltf",
     //    "structure/structure.gltf",
 };
 
@@ -355,6 +355,7 @@ void VulkanEngine::init_buffers()
     create_vertex_index_buffers();
     create_instance_buffer();
     create_scene_buffer();
+    create_mesh_transform_buffer();
     create_material_constants_buffer();
     create_indirect_buffer();
 }
@@ -745,6 +746,12 @@ void VulkanEngine::create_scene_buffer()
     mSceneBuffer = create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
+void VulkanEngine::create_mesh_transform_buffer()
+{
+    const auto meshTransformSize = MAX_TRANSFORM_MATRICES * sizeof(glm::mat4);
+    mMeshTransformsBuffer = create_buffer(meshTransformSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
+}
+
 void VulkanEngine::create_material_constants_buffer()
 {
     const auto materialConstantsDataSize = MAX_MATERIALS * sizeof(MaterialConstants);
@@ -784,7 +791,7 @@ void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, 
     indexBufferOffset += srcIndexBufferSize;
 }
 
-void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset)
+void VulkanEngine::generate_indirect_commands(MeshData& mesh, Primitive& primitive, int& verticesOffset, int& indicesOffset)
 {
     VkDrawIndexedIndirectCommand indirectCmd {};
     indirectCmd.instanceCount = OBJECT_COUNT;
@@ -793,11 +800,43 @@ void VulkanEngine::update_indirect_commands(Primitive& primitive, int& verticesO
     indirectCmd.indexCount = primitive.indexCount;
     indirectCmd.firstIndex = indicesOffset;
 
-    mIndirectBatches[primitive.material->mName].mat = primitive.material.get();
-    mIndirectBatches[primitive.material->mName].commands.push_back(indirectCmd);
+    // TODO map each primitive to its own command
 
     verticesOffset += primitive.vertexCount;
     indicesOffset += primitive.indexCount;
+}
+
+void VulkanEngine::assign_indirect_groups(MeshData& mesh, Primitive& primitive)
+{
+    IndirectBatchGroup indirectBatchGroup {};
+    indirectBatchGroup.meshName = mesh.name;
+    indirectBatchGroup.matName = primitive.material->mName;
+
+    mIndirectBatches[indirectBatchGroup].mat = primitive.material.get();
+    mIndirectBatches[indirectBatchGroup].mesh = &mesh;
+    // TODO assign each primitive's command to the correct groups
+}
+
+void VulkanEngine::traverse_nodes(Node& startingNode, std::vector<glm::mat4>& meshTransformMatrices, int& meshIndex)
+{
+    try {
+        // Unqiue nodes 
+        MeshNode& startNode = dynamic_cast<MeshNode&>(startingNode);
+        if (!mMeshIndexes.contains(startNode.mesh.get())) {
+            mMeshIndexes[startNode.mesh.get()] = meshIndex;
+            meshIndex++;
+            meshTransformMatrices.push_back(startNode.mWorldTransform);
+        }
+        // MeshNode reuses, process all primitives used in reuse
+        for (auto& primitive : startNode.mesh->primitives) {
+            assign_indirect_groups(*startNode.mesh, primitive);
+        }
+    } catch (const std::bad_cast& e) {
+    }
+
+    for (auto& childNode : startingNode.mChildren) {
+        traverse_nodes(*childNode, meshTransformMatrices, meshIndex);
+    }
 }
 
 void VulkanEngine::iterate_models()
@@ -808,12 +847,19 @@ void VulkanEngine::iterate_models()
     int verticesOffset = 0;
     int indicesOffset = 0;
 
+    int meshIndex = 0;
+
     for (const auto& model : mLoadedModels | std::views::values) {
         update_vertex_index_buffers(model->mModelBuffers.vertex, vertexBufferOffset, model->mModelBuffers.index, indexBufferOffset);
+
         for (const auto& mesh : model->mMeshes | std::views::values) {
             for (auto& primitive : mesh->primitives) {
-                update_indirect_commands(primitive, verticesOffset, indicesOffset);
+                generate_indirect_commands(*mesh, primitive, verticesOffset, indicesOffset);
             }
+        }
+
+        for (const auto& topNode : model->mTopNodes) {
+            traverse_nodes(*topNode, mMeshTransformMatrices, meshIndex);
         }
     }
 }
@@ -902,20 +948,46 @@ void VulkanEngine::update_scene_buffer()
         std::vector<VkBufferCopy> { sceneCopy });
 }
 
+void VulkanEngine::update_mesh_transform_buffer()
+{
+    static const AllocatedBuffer stagingBuffer = create_staging_buffer(mMeshTransformsBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
+    static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+
+    const VkDeviceSize meshTransformsSize = mMeshTransformMatrices.size() * sizeof(glm::mat4);
+
+    memcpy(stagingAddress, mMeshTransformMatrices.data(), meshTransformsSize);
+
+    VkBufferCopy meshTransformsCopy {};
+    meshTransformsCopy.dstOffset = 0;
+    meshTransformsCopy.srcOffset = 0;
+    meshTransformsCopy.size = stagingBuffer.info.size;
+
+    mBufferCopyBatches.perDrawBuffers.emplace_back(
+        stagingBuffer.buffer,
+        mMeshTransformsBuffer.buffer,
+        std::vector<VkBufferCopy> { meshTransformsCopy });
+}
+
 void VulkanEngine::update_material_buffer()
 {
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mMaterialConstantsBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     VkDeviceSize materialConstantsBufferOffset = 0;
+    int matIndex = 0;
+
     for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
         auto* currentMaterial = indirectBatch.mat;
+        if (mMatIndexes.contains(currentMaterial)) {
+            continue;
+        }
 
+        mMatIndexes[currentMaterial] = matIndex;
         const VkDeviceSize materialConstantsSize = sizeof(MaterialConstants);
-
         memcpy(static_cast<char*>(stagingAddress) + materialConstantsBufferOffset, &currentMaterial->mData.constants, materialConstantsSize);
-
         materialConstantsBufferOffset += materialConstantsSize;
+
+        matIndex++;
     }
 
     VkBufferCopy materialCopy {};
@@ -932,19 +1004,16 @@ void VulkanEngine::update_material_buffer()
 void VulkanEngine::update_material_texture_array()
 {
     DescriptorWriter writer;
-    int matIndex = 0;
 
-    for (auto& indirectBatch : mIndirectBatches | std::views::values) {
-        const auto* currentMaterial = indirectBatch.mat;
-        indirectBatch.matIndex = matIndex;
+    for (auto& matIndexPair : mMatIndexes) {
+        const auto* currentMaterial = matIndexPair.first;
+        const auto matIndex = matIndexPair.second;
 
         writer.write_image_array(0, currentMaterial->mData.resources.base.image.imageView, currentMaterial->mData.resources.base.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 0);
         writer.write_image_array(0, currentMaterial->mData.resources.emissive.image.imageView, currentMaterial->mData.resources.emissive.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 1);
         writer.write_image_array(0, currentMaterial->mData.resources.metallicRoughness.image.imageView, currentMaterial->mData.resources.metallicRoughness.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 2);
         writer.write_image_array(0, currentMaterial->mData.resources.normal.image.imageView, currentMaterial->mData.resources.normal.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 3);
         writer.write_image_array(0, currentMaterial->mData.resources.occlusion.image.imageView, currentMaterial->mData.resources.occlusion.sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, matIndex * 5 + 4);
-
-        matIndex++;
     }
 
     writer.update_set(mDevice, mMaterialTexturesArray.set);
@@ -965,6 +1034,7 @@ void VulkanEngine::update_draw_data()
 
     iterate_models();
     update_indirect_buffer();
+    update_mesh_transform_buffer();
     update_material_buffer();
     update_material_texture_array();
     update_instanced_buffer();
@@ -1017,10 +1087,12 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     VkDeviceSize indirectBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
-        PbrMaterial* currentMaterial = indirectBatch.mat;
+        auto* currentMaterial = indirectBatch.mat;
+        auto* currentMesh = indirectBatch.mesh;
         const auto& indirectCommands = indirectBatch.commands;
 
-        mPushConstants.materialIndex = indirectBatch.matIndex;
+        mPushConstants.materialIndex = mMatIndexes[currentMaterial];
+        mPushConstants.meshIndex = mMeshIndexes[currentMesh];
 
         vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SSBOAddresses), &mPushConstants);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline); // TODO Check for same pipeline in previous loop
@@ -1316,8 +1388,11 @@ void VulkanEngine::cleanup_per_draw()
     get_current_frame().mFrameDescriptors.clear_pools(mDevice);
     get_current_frame().mFrameDeletionQueue.bufferDeletion.flush(); // For buffers that are used by cmd buffers. Wait for fence of this frame to be reset before flushing.
     mBufferDeletionQueue.perDrawBuffers.flush();
-    mIndirectBatches.clear();
     mBufferCopyBatches.perDrawBuffers.clear();
+    mIndirectBatches.clear();
+    mMeshTransformMatrices.clear();
+    mMatIndexes.clear();
+    mMeshIndexes.clear();
 }
 
 void VulkanEngine::cleanup_core() const
