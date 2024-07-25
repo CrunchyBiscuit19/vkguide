@@ -148,7 +148,7 @@ public:
 
     // Models and materials
     std::unordered_map<std::string, std::shared_ptr<GLTFModel>> mLoadedModels;
-    std::vector<glm::mat4> mMeshTransformMatrices;
+    std::vector<glm::mat4> mNodeTransformMatrices;
     AllocatedBuffer mMeshTransformsBuffer;
     AllocatedBuffer mMaterialConstantsBuffer;
     DescriptorCombined mMaterialTexturesArray;
@@ -156,8 +156,9 @@ public:
     // Store indirect commands per material
     std::map<IndirectBatchGroup, IndirectBatchData> mIndirectBatches;
     AllocatedBuffer mGlobalIndirectBuffer;
-    std::unordered_map<MeshData*,int> mMeshIndexes; // These 2 unordered maps exist mostly to keep track of which meshes and materials have already been processed
     std::unordered_map<PbrMaterial*,int> mMatIndexes;
+    std::unordered_map<MeshNode*,int> mNodeIndexes; // These 2 unordered maps exist mostly to keep track of which meshes and materials have already been processed
+    std::unordered_map<Primitive*, VkDrawIndexedIndirectCommand> mPrimitiveCommands;
 
     // Samplers
     VkSampler mDefaultSamplerLinear;
@@ -245,20 +246,20 @@ public:
     void create_vertex_index_buffers();
     void create_instance_buffer();
     void create_scene_buffer();
-    void create_mesh_transform_buffer();
+    void create_node_transform_buffer();
     void create_material_constants_buffer();
     void create_indirect_buffer();
 
     void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
-    void generate_indirect_commands(MeshData& mesh, Primitive& primitive, int& verticesOffset, int& indicesOffset);
-    void assign_indirect_groups(MeshData& mesh, Primitive& primitive);
-    void traverse_nodes(Node& startingNode, std::vector<glm::mat4>& meshWorldTransformMatrices, int& meshIndex);
+    void generate_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset);
+    void assign_indirect_groups(MeshNode* meshNode, Primitive& primitive);
+    void traverse_nodes(Node* startingNode, std::vector<glm::mat4>& nodeTransformMatrices, int& nodeIndex);
     void iterate_models();
 
     void update_indirect_buffer();
     void update_instanced_buffer();
     void update_scene_buffer();
-    void update_mesh_transform_buffer();
+    void update_node_transform_buffer();
     void update_material_buffer();
     void update_material_texture_array();
     void submit_buffer_updates(std::vector<BufferCopyBatch>& bufferCopyBatches) const;

@@ -25,6 +25,7 @@
 struct PbrData;
 struct PbrMaterial;
 struct MeshData;
+struct MeshNode;
 
 template <class T0>
 struct VulkanResource {
@@ -147,7 +148,7 @@ struct SSBOAddresses {
     VkDeviceAddress materialBuffer;
     VkDeviceAddress transformBuffer;
     uint32_t materialIndex;
-    uint32_t meshIndex;
+    uint32_t nodeIndex;
 };
 
 struct SceneData {
@@ -176,20 +177,20 @@ struct BufferCopyBatch {
 }; 
 
 struct IndirectBatchGroup {
-    std::string matName;
-    std::string meshName;
+    MeshNode* node;
+    PbrMaterial* mat;
 
     inline bool operator==(const IndirectBatchGroup& other) const
     {
-        return (matName == other.matName && meshName == other.meshName);
+        return (mat == other.mat && node == other.node);
     }
 
     inline bool operator<(const IndirectBatchGroup& other) const
     {
-        if (matName != other.matName) {
-            return (matName < other.matName);
+        if (node != other.node) {
+            return (node < other.node);
         }
-        return meshName < other.meshName;
+        return mat < other.mat;
     }
 };
 
@@ -199,13 +200,11 @@ struct std::hash<IndirectBatchGroup> {
     // Combine them using XOR and bit shifting
     std::size_t operator()(const IndirectBatchGroup& k) const
     {
-        return ((std::hash<std::string>()(k.matName) ^ (std::hash<std::string>()(k.meshName) << 1)) >> 1);
+        return ((std::hash<PbrMaterial*>()(k.mat) ^ (std::hash<MeshNode*>()(k.node) << 1)) >> 1);
     }
 };
 
 struct IndirectBatchData {
-    PbrMaterial* mat;
-    MeshData* mesh;
     std::vector<VkDrawIndexedIndirectCommand> commands;
 };
 

@@ -52,7 +52,7 @@ layout( push_constant, std430 ) uniform PushConstants
 	InstanceBuffer instanceBuffer;
 	SceneBuffer sceneBuffer;
 	MaterialBuffer materialBuffer; 
-	TransformBuffer transformBuffer
+	TransformBuffer transformBuffer;
 	uint materialIndex;
 	uint meshIndex;
 } constants;

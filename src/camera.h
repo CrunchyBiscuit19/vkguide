@@ -19,7 +19,7 @@ public:
     glm::vec3 position;
     float pitch { 0.f };
     float yaw { 0.f };
-    float speed { 50.f };
+    float speed { 10.f };
 
     const Uint8* keyState;
     SDL_bool relativeMode { SDL_TRUE };

@@ -17,9 +17,9 @@ void main()
 	vec4 sunlightColor = constants.sceneBuffer.sceneData.sunlightColor;
 	vec4 sunlightDirection = constants.sceneBuffer.sceneData.sunlightDirection;
 
-	int materialFactorIndex = constants.materialIndex;
-	int materialTextureIndex = materialFactorIndex * 5;
-	int baseTextureIndex = materialTextureIndex + 0;
+	uint materialFactorIndex = constants.materialIndex;
+	uint materialTextureIndex = materialFactorIndex * 5;
+	uint baseTextureIndex = materialTextureIndex + 0;
 	vec4 baseFactor = constants.materialBuffer.materials[materialFactorIndex].baseFactor;
 
 	float lightValue = max(dot(inNormal, sunlightDirection.xyz), 0.1f);
@@ -28,4 +28,5 @@ void main()
 	vec4 ambient = color * ambientColor;
 
 	outFragColor = vec4(color * lightValue * sunlightColor.w + ambient);
+	//outFragColor = vec4(color);
 }

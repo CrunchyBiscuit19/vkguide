@@ -31,6 +31,8 @@ struct Primitive {
 // Implementation of a drawable scene node.
 // The scene node can hold children and will also keep a transform to propagate to them (ie all children nodes also get transformed).
 struct Node {
+    std::string mName;
+
     // Parent pointer must be a weak pointer to avoid circular dependencies
     std::weak_ptr<Node> mParent;
     std::vector<std::shared_ptr<Node>> mChildren;
@@ -44,10 +46,10 @@ struct Node {
 };
 
 struct MeshData {
-    std::string name;
-    std::vector<Primitive> primitives;
+    std::string mName;
+    std::vector<Primitive> mPrimitives;
 };
 
 struct MeshNode : Node {
-    std::shared_ptr<MeshData> mesh;
+    std::shared_ptr<MeshData> mMesh;
 };

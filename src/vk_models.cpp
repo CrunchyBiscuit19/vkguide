@@ -138,10 +138,10 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     for (fastgltf::Mesh& mesh : asset.meshes) {
         std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
 
-        newmesh->name = fmt::format("{}_mesh_{}", mName, mesh.name);;
+        newmesh->mName = fmt::format("{}_mesh_{}", mName, mesh.name);
 
         meshes.push_back(newmesh);
-        mMeshes[newmesh->name] = newmesh;
+        mMeshes[newmesh->mName] = newmesh;
 
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
@@ -207,13 +207,13 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
             newPrimitive.bounds.extents = (maxpos - minpos) / 2.f;
             newPrimitive.bounds.sphereRadius = glm::length(newPrimitive.bounds.extents);
 
-            newmesh->primitives.push_back(newPrimitive);
+            newmesh->mPrimitives.push_back(newPrimitive);
         }
     }
 
     // Load vertices and indices in the mapped order of the meshes
     for (const auto& mesh : mMeshes | std::views::values) {
-        for (auto& primitive : mesh->primitives) {
+        for (auto& primitive : mesh->mPrimitives) {
             modelIndices.insert(modelIndices.end(), primitive.indices.begin(), primitive.indices.end());
             modelVertices.insert(modelVertices.end(), primitive.vertices.begin(), primitive.vertices.end());
             primitive.indices.clear();
@@ -228,13 +228,15 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
         // Find if the node has a mesh, and if it does hook it to the mesh pointer and allocate it with the meshnode class
         if (node.meshIndex.has_value()) {
             newNode = std::make_shared<MeshNode>();
-            dynamic_cast<MeshNode*>(newNode.get())->mesh = meshes[*node.meshIndex]; // Optional return value, not dereference
+            dynamic_cast<MeshNode*>(newNode.get())->mMesh = meshes[*node.meshIndex]; // Optional return value, not dereference
         } else {
             newNode = std::make_shared<Node>();
         }
 
+        newNode->mName = fmt::format("{}_node_{}", mName, node.name); 
+
         nodes.push_back(newNode);
-        mNodes[node.name.c_str()];
+        mNodes[newNode->mName];
 
         // First function if it's a mat4 transform, second function if it's separate transform / rotate / scale quaternion or vec3
         std::visit(fastgltf::visitor { [&](const fastgltf::Node::TransformMatrix& matrix) {
