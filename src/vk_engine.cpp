@@ -39,8 +39,7 @@ const std::vector<std::filesystem::path> modelFilepaths {
     //    "AntiqueCamera/AntiqueCameraSingleMesh.gltf"
     //    "toycar/toycar.gltf",
     //    "sponza/Sponza.gltf",
-    //     "corvette/c7corvette.gltf",
-    "structure/structure.gltf",
+        "structure/structure.gltf",
 };
 
 VulkanEngine* loadedEngine = nullptr;

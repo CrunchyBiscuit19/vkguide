@@ -20,8 +20,8 @@ constexpr unsigned int ONE_MEBIBYTE_IN_BYTES = 1048576;
 
 constexpr unsigned int MAX_IMAGE_SIZE = 100 * ONE_MEBIBYTE_IN_BYTES;
 
-constexpr unsigned int DEFAULT_VERTEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
-constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 20 * ONE_MEBIBYTE_IN_BYTES;
+constexpr unsigned int DEFAULT_VERTEX_BUFFER_SIZE = 40 * ONE_MEBIBYTE_IN_BYTES;
+constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 40 * ONE_MEBIBYTE_IN_BYTES;
 
 constexpr unsigned int MAX_INSTANCES = 5000;
 

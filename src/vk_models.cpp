@@ -167,6 +167,7 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
                         Vertex newvtx;
                         newvtx.position = v;
                         newvtx.normal = { 1, 0, 0 };
+                        newvtx.color = glm::vec4(1.f);
                         newvtx.uv_x = 0;
                         newvtx.uv_y = 0;
                         newPrimitive.vertices[index] = newvtx;
@@ -187,6 +188,14 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
                     [&](glm::vec2 v, size_t index) {
                         newPrimitive.vertices[index].uv_x = v.x;
                         newPrimitive.vertices[index].uv_y = v.y;
+                    });
+            }
+
+            auto colors = p.findAttribute("COLOR_0");
+            if (colors != p.attributes.end()) {
+                fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[colors->second],
+                    [&](glm::vec4 v, size_t index) {
+                        newPrimitive.vertices[index].color = v;
                     });
             }
 
@@ -233,7 +242,7 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
             newNode = std::make_shared<Node>();
         }
 
-        newNode->mName = fmt::format("{}_node_{}", mName, node.name); 
+        newNode->mName = fmt::format("{}_node_{}", mName, node.name);
 
         nodes.push_back(newNode);
         mNodes[newNode->mName];

@@ -6,6 +6,7 @@
 
 layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec2 outUV;
+layout (location = 2) out vec4 outColor;
 
 void main() 
 {
@@ -23,8 +24,12 @@ void main()
 	mat4 proj = constants.sceneBuffer.sceneData.proj; 
 	mat4 view = constants.sceneBuffer.sceneData.view; 
 
+	uint materialFactorIndex = constants.materialIndex;
+	vec4 baseFactor = constants.materialBuffer.materials[materialFactorIndex].baseFactor;
+
 	gl_Position =  proj * view * (instanceMatrix * transformationMatrix) * position; 
 
+	outColor = v.color * baseFactor;
 	outNormal = normalize(v.normal);
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
