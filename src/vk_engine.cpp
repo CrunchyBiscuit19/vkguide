@@ -504,7 +504,7 @@ VkPipelineCacheCreateInfo VulkanEngine::read_pipeline_cache(const std::string& f
 }
 
 void VulkanEngine::write_pipeline_cache(const std::string& filename)
-{
+{ 
     size_t dataSize;
     vkGetPipelineCacheData(mDevice, mPipelineCache, &dataSize, nullptr); // Get size first
     vkGetPipelineCacheData(mDevice, mPipelineCache, &dataSize, mPipelineCacheData.data()); // Then read the size of data
@@ -921,7 +921,7 @@ void VulkanEngine::update_scene_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(sizeof(SceneData), mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    mSceneData.ambientColor = glm::vec4(1.f);
+    mSceneData.ambientColor = glm::vec4(.1f);
     mSceneData.sunlightColor = glm::vec4(1.f);
     mSceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
     mMainCamera.updatePosition(mStats.frametime, static_cast<float>(ONE_SECOND_IN_MILLISECONDS / EXPECTED_FRAME_RATE));
