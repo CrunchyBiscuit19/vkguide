@@ -20,8 +20,8 @@ constexpr unsigned int ONE_MEBIBYTE_IN_BYTES = 1048576;
 
 constexpr unsigned int MAX_IMAGE_SIZE = 100 * ONE_MEBIBYTE_IN_BYTES;
 
-constexpr unsigned int DEFAULT_VERTEX_BUFFER_SIZE = 40 * ONE_MEBIBYTE_IN_BYTES;
-constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 40 * ONE_MEBIBYTE_IN_BYTES;
+constexpr unsigned int DEFAULT_VERTEX_BUFFER_SIZE = 100 * ONE_MEBIBYTE_IN_BYTES;
+constexpr unsigned int DEFAULT_INDEX_BUFFER_SIZE = 100 * ONE_MEBIBYTE_IN_BYTES;
 
 constexpr unsigned int MAX_INSTANCES = 5000;
 
@@ -35,7 +35,6 @@ constexpr unsigned int OBJECT_COUNT = 1;
 
 struct EngineStats {
     float frametime;
-    int triangle_count;
     int drawcall_count;
     float scene_update_time;
     float mesh_draw_time;
@@ -115,7 +114,7 @@ public:
     // Pipelines
     std::vector<char> mPipelineCacheData;
     VkPipelineCache mPipelineCache;
-    std::unordered_map<std::size_t, MaterialPipeline> mPipelinesCreated;
+    std::unordered_map<PipelineOptions, MaterialPipeline> mPipelinesCreated;
 
     // Push constants
     SSBOAddresses mPushConstants;
@@ -231,7 +230,7 @@ public:
 
     VkPipelineCacheCreateInfo read_pipeline_cache(const std::string& filename);
     void write_pipeline_cache(const std::string& filename);
-    MaterialPipeline create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode);
+    MaterialPipeline create_pipeline(PipelineOptions& pipelineOptions);
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue);
     void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;

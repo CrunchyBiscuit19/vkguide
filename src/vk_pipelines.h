@@ -19,6 +19,7 @@ public:
     VkPipelineDepthStencilStateCreateInfo mDepthStencil;
     VkPipelineRenderingCreateInfo mRenderInfo;
     VkFormat mColorAttachmentformat;
+    VkPipelineCache mPipelineCache;
 
     PipelineBuilder();
 

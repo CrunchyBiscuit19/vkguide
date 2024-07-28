@@ -32,14 +32,13 @@ constexpr bool bUseValidationLayers = true;
 const std::string pipelineCachePath = "../../bin/pipeline_cache.bin";
 const std::filesystem::path modelRootPath { "../../assets" };
 const std::vector<std::filesystem::path> modelFilepaths {
-    //    "scifihelmet/SciFiHelmet.glb",
+    //    "scifihelmet/SciFiHelmet.gltf",
     //    "stainedglasslamp/StainedGlassLamp.gltf",
-    //    "stainedglasslamp/StainedGlassLamp4Meshes.gltf",
     //    "AntiqueCamera/AntiqueCamera.glb",
-    //    "AntiqueCamera/AntiqueCameraSingleMesh.gltf"
     //    "toycar/toycar.gltf",
     //    "sponza/Sponza.gltf",
         "structure/structure.gltf",
+    //    "kitchen/kitchen.glb",
 };
 
 VulkanEngine* loadedEngine = nullptr;
@@ -519,12 +518,10 @@ void VulkanEngine::write_pipeline_cache(const std::string& filename)
     }
 }
 
-MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::AlphaMode alphaMode)
+MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
 {
-    std::size_t optionsHash = (std::hash<bool> {}(doubleSided)) ^ ((std::hash<fastgltf::AlphaMode> {}(alphaMode)) << 1);
-
-    if (mPipelinesCreated.contains(optionsHash)) {
-        return mPipelinesCreated[optionsHash];
+    if (mPipelinesCreated.contains(pipelineOptions)) {
+        return mPipelinesCreated[pipelineOptions];
     }
 
     VkShaderModule meshFragShader;
@@ -550,9 +547,9 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     VK_CHECK(vkCreatePipelineLayout(mDevice, &mesh_layout_info, nullptr, &newLayout));
 
     VkCullModeFlags cullMode;
-    (doubleSided) ? (cullMode = VK_CULL_MODE_NONE) : (cullMode = VK_CULL_MODE_BACK_BIT);
+    (pipelineOptions.doubleSided) ? (cullMode = VK_CULL_MODE_NONE) : (cullMode = VK_CULL_MODE_BACK_BIT);
     bool transparency;
-    (alphaMode == fastgltf::AlphaMode::Blend) ? (transparency = true) : (transparency = false);
+    (pipelineOptions.alphaMode == fastgltf::AlphaMode::Blend) ? (transparency = true) : (transparency = false);
 
     PipelineBuilder pipelineBuilder;
     pipelineBuilder.set_shaders(meshVertexShader, meshFragShader);
@@ -569,6 +566,7 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
         pipelineBuilder.enable_depthtest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
     }
     pipelineBuilder.mPipelineLayout = newLayout;
+    pipelineBuilder.mPipelineCache = mPipelineCache;
 
     MaterialPipeline materialPipeline(pipelineBuilder.build_pipeline(mDevice), newLayout);
 
@@ -577,7 +575,7 @@ MaterialPipeline VulkanEngine::create_pipeline(bool doubleSided, fastgltf::Alpha
     mPipelineDeletionQueue.pipelines.push_resource(mDevice, materialPipeline.pipeline, nullptr);
     mPipelineDeletionQueue.pipelineLayouts.push_resource(mDevice, materialPipeline.layout, nullptr);
 
-    mPipelinesCreated[optionsHash] = materialPipeline;
+    mPipelinesCreated[pipelineOptions] = materialPipeline;
 
     return materialPipeline;
 }
@@ -921,7 +919,7 @@ void VulkanEngine::update_scene_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(sizeof(SceneData), mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    mSceneData.ambientColor = glm::vec4(.1f);
+    mSceneData.ambientColor = glm::vec4(1.f);
     mSceneData.sunlightColor = glm::vec4(1.f);
     mSceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
     mMainCamera.updatePosition(mStats.frametime, static_cast<float>(ONE_SECOND_IN_MILLISECONDS / EXPECTED_FRAME_RATE));
@@ -1055,7 +1053,6 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
     mStats.drawcall_count = 0;
-    mStats.triangle_count = 0;
     auto start = std::chrono::system_clock::now();
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(mDrawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
@@ -1098,7 +1095,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         vkCmdDrawIndexedIndirect(cmd, mGlobalIndirectBuffer.buffer, indirectBufferOffset, indirectCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
         indirectBufferOffset += indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-        mStats.drawcall_count++;
+        mStats.drawcall_count += indirectCommands.size();
     }
 
     vkCmdEndRendering(cmd);
@@ -1288,7 +1285,6 @@ void VulkanEngine::run()
             ImGui::Text("Frame Time:  %fms", mStats.frametime);
             ImGui::Text("Draw Time: %fms", mStats.mesh_draw_time);
             ImGui::Text("Update Time: %fms", mStats.scene_update_time);
-            ImGui::Text("Triangles: %i", mStats.triangle_count);
             ImGui::Text("Draws: %i", mStats.drawcall_count);
             ImGui::End();
         }

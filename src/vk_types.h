@@ -13,12 +13,13 @@
 #include <tuple>
 #include <vector>
 
+#include <glm/fwd.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
-#include <glm/fwd.hpp>
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
+#include <fastgltf/types.hpp>
 
 #include <vk_descriptors.h>
 
@@ -170,11 +171,31 @@ struct DescriptorCombined {
     VkDescriptorSetLayout layout;
 };
 
+struct PipelineOptions {
+    bool doubleSided;
+    fastgltf::AlphaMode alphaMode;
+
+    inline bool operator==(const PipelineOptions& other) const
+    {
+        return (doubleSided == other.doubleSided && alphaMode == other.alphaMode);
+    }
+};
+
+template <>
+struct std::hash<PipelineOptions> {
+    // Compute individual hash values for strings
+    // Combine them using XOR and bit shifting
+    inline std::size_t operator()(const PipelineOptions& k) const
+    {
+        return ((std::hash<bool>()(k.doubleSided) ^ (std::hash<fastgltf::AlphaMode>()(k.alphaMode) << 1)) >> 1);
+    }
+};
+
 struct BufferCopyBatch {
     VkBuffer srcBuffer;
     VkBuffer dstBuffer;
     std::vector<VkBufferCopy> bufferCopies;
-}; 
+};
 
 struct IndirectBatchGroup {
     MeshNode* node;
@@ -198,7 +219,7 @@ template <>
 struct std::hash<IndirectBatchGroup> {
     // Compute individual hash values for strings
     // Combine them using XOR and bit shifting
-    std::size_t operator()(const IndirectBatchGroup& k) const
+    inline std::size_t operator()(const IndirectBatchGroup& k) const
     {
         return ((std::hash<PbrMaterial*>()(k.mat) ^ (std::hash<MeshNode*>()(k.node) << 1)) >> 1);
     }
