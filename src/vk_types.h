@@ -16,10 +16,12 @@
 #include <glm/fwd.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
 #include <fastgltf/types.hpp>
+#include <boost/uuid/uuid.hpp>
 
 #include <vk_descriptors.h>
 
@@ -27,6 +29,7 @@ struct PbrData;
 struct PbrMaterial;
 struct MeshData;
 struct MeshNode;
+struct GLTFModel;
 
 template <class T0>
 struct VulkanResource {
@@ -160,10 +163,26 @@ struct SceneData {
     glm::vec4 sunlightColor;
 };
 
+struct TransformationData {
+    glm::vec3 translation;
+    glm::vec3 rotation;
+    glm::f32 scale;
+};
+
 struct InstanceData {
-    glm::mat4 translation;
-    glm::mat4 rotation;
-    glm::mat4 scale;
+    glm::mat4 transformation;
+};
+
+struct EngineInstance {
+    boost::uuids::uuid id;
+    bool toDelete {false};
+    TransformationData transformComponents;
+    InstanceData data;
+};
+
+struct EngineModel {
+    std::shared_ptr<GLTFModel> gltfModel;
+    std::vector<EngineInstance> instances;
 };
 
 struct DescriptorCombined {
@@ -198,8 +217,8 @@ struct BufferCopyBatch {
 };
 
 struct IndirectBatchGroup {
-    MeshNode* node;
     PbrMaterial* mat;
+    MeshNode* node;
 
     inline bool operator==(const IndirectBatchGroup& other) const
     {
@@ -208,10 +227,10 @@ struct IndirectBatchGroup {
 
     inline bool operator<(const IndirectBatchGroup& other) const
     {
-        if (node != other.node) {
-            return (node < other.node);
+        if (mat != other.mat) {
+            return (mat < other.mat);
         }
-        return mat < other.mat;
+        return node < other.node;
     }
 };
 

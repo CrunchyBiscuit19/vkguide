@@ -11,9 +11,7 @@ struct Vertex {
 	vec4 color;
 }; 
 struct Instance {
-	mat4 translation;
-    mat4 rotation;
-    mat4 scale;
+	mat4 transformation;
 };
 struct SceneData {   
 	mat4 view;

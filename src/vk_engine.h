@@ -31,13 +31,15 @@ constexpr unsigned int MAX_MATERIALS = 5000;
 
 constexpr unsigned int MAX_TRANSFORM_MATRICES = 5000;
 
-constexpr unsigned int OBJECT_COUNT = 1;
+constexpr unsigned int OBJECT_COUNT = 3;
 
 struct EngineStats {
     float frametime;
     int drawcall_count;
     float scene_update_time;
     float mesh_draw_time;
+    int pipeline_binds;
+    int layout_binds;
 };
 
 struct FrameData {
@@ -115,6 +117,8 @@ public:
     std::vector<char> mPipelineCacheData;
     VkPipelineCache mPipelineCache;
     std::unordered_map<PipelineOptions, MaterialPipeline> mPipelinesCreated;
+    VkPipeline mLastPipeline { nullptr };
+    VkPipelineLayout mLastPipelineLayout { nullptr };
 
     // Push constants
     SSBOAddresses mPushConstants;
@@ -146,9 +150,9 @@ public:
     AllocatedBuffer mSceneBuffer;
 
     // Models and materials
-    std::unordered_map<std::string, std::shared_ptr<GLTFModel>> mLoadedModels;
+    std::unordered_map<std::string, EngineModel> mEngineModels;
     std::vector<glm::mat4> mNodeTransformMatrices;
-    AllocatedBuffer mMeshTransformsBuffer;
+    AllocatedBuffer mNodeTransformsBuffer;
     AllocatedBuffer mMaterialConstantsBuffer;
     DescriptorCombined mMaterialTexturesArray;
 
@@ -156,7 +160,7 @@ public:
     std::map<IndirectBatchGroup, IndirectBatchData> mIndirectBatches;
     AllocatedBuffer mGlobalIndirectBuffer;
     std::unordered_map<PbrMaterial*,int> mMatIndexes;
-    std::unordered_map<MeshNode*,int> mNodeIndexes; // These 2 unordered maps exist mostly to keep track of which meshes and materials have already been processed
+    std::unordered_map<MeshNode*,int> mNodeIndexes;
     std::unordered_map<Primitive*, VkDrawIndexedIndirectCommand> mPrimitiveCommands;
 
     // Samplers
@@ -250,7 +254,7 @@ public:
     void create_indirect_buffer();
 
     void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
-    void generate_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset);
+    void generate_indirect_commands(Primitive& primitive, int instanceCount, int instancesOffset, int& verticesOffset, int& indicesOffset);
     void assign_indirect_groups(MeshNode* meshNode, Primitive& primitive);
     void traverse_nodes(Node* startingNode, std::vector<glm::mat4>& nodeTransformMatrices, int& nodeIndex);
     void iterate_models();
@@ -267,6 +271,8 @@ public:
     void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const;
     void draw_geometry(VkCommandBuffer cmd);
     void draw(); // draw loop
+
+    void imgui_frame();
 
     void run(); // run main loop
 

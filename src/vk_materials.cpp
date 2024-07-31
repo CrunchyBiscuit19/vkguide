@@ -9,7 +9,6 @@ PbrMaterial::PbrMaterial(VulkanEngine* engine): mEngine(engine)
 
 void PbrMaterial::create_material()
 {
-    mData.doubleSided = true;
     PipelineOptions options { mData.doubleSided, mData.alphaMode };
     mPipeline = mEngine->create_pipeline(options);
 }

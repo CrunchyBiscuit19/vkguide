@@ -8,6 +8,9 @@
 #include <SDL_vulkan.h>
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <imgui.h>
@@ -33,11 +36,9 @@ const std::string pipelineCachePath = "../../bin/pipeline_cache.bin";
 const std::filesystem::path modelRootPath { "../../assets" };
 const std::vector<std::filesystem::path> modelFilepaths {
     //    "scifihelmet/SciFiHelmet.gltf",
-    //    "stainedglasslamp/StainedGlassLamp.gltf",
-    //    "AntiqueCamera/AntiqueCamera.glb",
-    //    "toycar/toycar.gltf",
+    "stainedglasslamp/StainedGlassLamp.gltf",
     //    "sponza/Sponza.gltf",
-        "structure/structure.gltf",
+    //    "structure/structure.gltf",
     //    "kitchen/kitchen.glb",
 };
 
@@ -405,11 +406,16 @@ void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelFi
         auto fullModelPath = modelRootPath / modelFilePath;
         const auto gltfModel = load_gltf_model(this, fullModelPath);
         assert(gltfModel.has_value());
-        mLoadedModels[modelFilePath.stem().string()] = *gltfModel;
+
+        EngineModel engineModel { *gltfModel, {} };
+        mEngineModels[modelFilePath.stem().string()] = engineModel;
+
         fmt::println("Loaded GLTF Model: {}", modelFilePath.filename().string());
     }
+
     submit_buffer_updates(mBufferCopyBatches.modelBuffers);
     mBufferCopyBatches.modelBuffers.clear();
+
     mBufferDeletionQueue.modelLoadStagingBuffers.flush();
 }
 
@@ -423,7 +429,7 @@ void VulkanEngine::init_push_constants()
     mPushConstants.sceneBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
     deviceAddressInfo.buffer = mMaterialConstantsBuffer.buffer;
     mPushConstants.materialBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
-    deviceAddressInfo.buffer = mMeshTransformsBuffer.buffer;
+    deviceAddressInfo.buffer = mNodeTransformsBuffer.buffer;
     mPushConstants.transformBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
 }
 
@@ -503,7 +509,7 @@ VkPipelineCacheCreateInfo VulkanEngine::read_pipeline_cache(const std::string& f
 }
 
 void VulkanEngine::write_pipeline_cache(const std::string& filename)
-{ 
+{
     size_t dataSize;
     vkGetPipelineCacheData(mDevice, mPipelineCache, &dataSize, nullptr); // Get size first
     vkGetPipelineCacheData(mDevice, mPipelineCache, &dataSize, mPipelineCacheData.data()); // Then read the size of data
@@ -737,7 +743,7 @@ void VulkanEngine::create_vertex_index_buffers()
 
 void VulkanEngine::create_instance_buffer()
 {
-    const auto instanceDataSize = MAX_INSTANCES * sizeof(InstanceData);
+    const auto instanceDataSize = MAX_INSTANCES * sizeof(TransformationData);
     mInstanceBuffer = create_buffer(instanceDataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
@@ -749,7 +755,7 @@ void VulkanEngine::create_scene_buffer()
 void VulkanEngine::create_node_transform_buffer()
 {
     const auto meshTransformSize = MAX_TRANSFORM_MATRICES * sizeof(glm::mat4);
-    mMeshTransformsBuffer = create_buffer(meshTransformSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
+    mNodeTransformsBuffer = create_buffer(meshTransformSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
 void VulkanEngine::create_material_constants_buffer()
@@ -791,11 +797,11 @@ void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, 
     indexBufferOffset += srcIndexBufferSize;
 }
 
-void VulkanEngine::generate_indirect_commands(Primitive& primitive, int& verticesOffset, int& indicesOffset)
+void VulkanEngine::generate_indirect_commands(Primitive& primitive, int instanceCount, int instancesOffset, int& verticesOffset, int& indicesOffset)
 {
     VkDrawIndexedIndirectCommand indirectCmd {};
-    indirectCmd.instanceCount = OBJECT_COUNT;
-    indirectCmd.firstInstance = 0;
+    indirectCmd.instanceCount = instanceCount;
+    indirectCmd.firstInstance = instancesOffset;
     indirectCmd.vertexOffset = verticesOffset;
     indirectCmd.indexCount = primitive.indexCount;
     indirectCmd.firstIndex = indicesOffset;
@@ -842,20 +848,24 @@ void VulkanEngine::iterate_models()
     int verticesOffset = 0;
     int indicesOffset = 0;
 
+    int instancesOffset = 0;
+
     int nodeIndex = 0;
 
-    for (const auto& model : mLoadedModels | std::views::values) {
-        update_vertex_index_buffers(model->mModelBuffers.vertex, vertexBufferOffset, model->mModelBuffers.index, indexBufferOffset);
+    for (const auto& engineModel : mEngineModels | std::views::values) {
+        update_vertex_index_buffers(engineModel.gltfModel->mModelBuffers.vertex, vertexBufferOffset, engineModel.gltfModel->mModelBuffers.index, indexBufferOffset);
 
-        for (const auto& mesh : model->mMeshes | std::views::values) {
+        for (const auto& mesh : engineModel.gltfModel->mMeshes | std::views::values) {
             for (auto& primitive : mesh->mPrimitives) {
-                generate_indirect_commands(primitive, verticesOffset, indicesOffset);
+                generate_indirect_commands(primitive, engineModel.instances.size(), instancesOffset, verticesOffset, indicesOffset);
             }
         }
 
-        for (const auto topNode : model->mTopNodes) {
+        for (const auto topNode : engineModel.gltfModel->mTopNodes) {
             traverse_nodes(topNode.get(), mNodeTransformMatrices, nodeIndex);
         }
+
+        instancesOffset += engineModel.instances.size();
     }
 }
 
@@ -891,17 +901,27 @@ void VulkanEngine::update_instanced_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mInstanceBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
-    std::vector<InstanceData> instanceData;
-    instanceData.resize(OBJECT_COUNT);
-    for (int i = 0; i < OBJECT_COUNT; i++) {
-        instanceData[i].translation = glm::translate(glm::mat4 { 1.0f }, glm::vec3 { static_cast<float>(OBJECT_COUNT * i), 0, 0 });
-        instanceData[i].rotation = glm::toMat4(rotation(glm::vec3(), glm::vec3()));
-        instanceData[i].scale = glm::scale(glm::mat4 { 1.0f }, glm::vec3 { 15.f });
+    std::vector<InstanceData> instancesData;
+    for (auto& engineModel : mEngineModels | std::views::values) {
+        engineModel.instances.erase(std::remove_if(engineModel.instances.begin(), engineModel.instances.end(),
+                                        [](EngineInstance i) { return i.toDelete; }),
+            engineModel.instances.end());
+
+        for (auto& instance : engineModel.instances) {
+            glm::mat4 translationMatrix = glm::translate(glm::mat4 { 1.0f }, instance.transformComponents.translation);
+            glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f), instance.transformComponents.rotation[0], glm::vec3(1.0f, 0.0f, 0.0f));
+            glm::mat4 rotationY = glm::rotate(glm::mat4(1.0f), instance.transformComponents.rotation[1], glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 rotationZ = glm::rotate(glm::mat4(1.0f), instance.transformComponents.rotation[2], glm::vec3(0.0f, 0.0f, 1.0f));
+            glm::mat4 rotationMatrix = rotationZ * rotationY * rotationX;
+            glm::mat4 scaleMatrix = glm::scale(glm::mat4 { 1.0f }, glm::vec3(instance.transformComponents.scale));
+            instance.data.transformation = translationMatrix * rotationMatrix * scaleMatrix;
+            instancesData.push_back(instance.data);
+        }
     }
 
-    const VkDeviceSize instanceDataSize = instanceData.size() * sizeof(InstanceData);
+    const VkDeviceSize instanceDataSize = instancesData.size() * sizeof(InstanceData);
 
-    memcpy(stagingAddress, instanceData.data(), instanceDataSize);
+    memcpy(stagingAddress, instancesData.data(), instanceDataSize);
 
     VkBufferCopy instanceCopy {};
     instanceCopy.dstOffset = 0;
@@ -944,7 +964,7 @@ void VulkanEngine::update_scene_buffer()
 
 void VulkanEngine::update_node_transform_buffer()
 {
-    static const AllocatedBuffer stagingBuffer = create_staging_buffer(mMeshTransformsBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
+    static const AllocatedBuffer stagingBuffer = create_staging_buffer(mNodeTransformsBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     const VkDeviceSize meshTransformsSize = mNodeTransformMatrices.size() * sizeof(glm::mat4);
@@ -958,7 +978,7 @@ void VulkanEngine::update_node_transform_buffer()
 
     mBufferCopyBatches.perDrawBuffers.emplace_back(
         stagingBuffer.buffer,
-        mMeshTransformsBuffer.buffer,
+        mNodeTransformsBuffer.buffer,
         std::vector<VkBufferCopy> { meshTransformsCopy });
 }
 
@@ -1053,6 +1073,8 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
     mStats.drawcall_count = 0;
+    mStats.pipeline_binds = 0;
+    mStats.layout_binds = 0;
     auto start = std::chrono::system_clock::now();
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(mDrawImage.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
@@ -1084,13 +1106,20 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         auto* currentNode = indirectBatch.first.node;
         const auto& indirectCommands = indirectBatch.second.commands;
 
+        if (currentMaterial->mPipeline.pipeline != mLastPipeline) {
+            mLastPipeline = currentMaterial->mPipeline.pipeline;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline);
+            mStats.pipeline_binds++;
+        }
+        if (currentMaterial->mPipeline.layout != mLastPipelineLayout) {
+            mLastPipelineLayout = currentMaterial->mPipeline.layout;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArray.set, 0, nullptr);
+            mStats.layout_binds++;
+        }
+
         mPushConstants.materialIndex = mMatIndexes[currentMaterial];
         mPushConstants.nodeIndex = mNodeIndexes[currentNode];
-
-        // TODO Check for same pipeline / pipeline layout in previous loop
         vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SSBOAddresses), &mPushConstants);
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, currentMaterial->mPipeline.layout, 0, 1, &mMaterialTexturesArray.set, 0, nullptr);
 
         vkCmdDrawIndexedIndirect(cmd, mGlobalIndirectBuffer.buffer, indirectBufferOffset, indirectCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
         indirectBufferOffset += indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
@@ -1235,6 +1264,62 @@ void VulkanEngine::draw()
     mFrameNumber++;
 }
 
+void VulkanEngine::imgui_frame()
+{
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL2_NewFrame(mWindow);
+    ImGui::NewFrame();
+    if (ImGui::Begin("Camera")) {
+        ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mMainCamera.movementMode).data());
+        ImGui::Text("[F2] Mouse Mode: %s", (mMainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
+        ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 100.f, "%.2f");
+        ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z);
+        ImGui::Text("Pitch: %.1f, Yaw: %.1f", mMainCamera.pitch, mMainCamera.yaw);
+        ImGui::End();
+    }
+    if (ImGui::Begin("Stats")) {
+        ImGui::Text("Compile Mode: %s", (bUseValidationLayers ? "DEBUG" : "RELEASE"));
+        ImGui::Text("Frame Time:  %fms", mStats.frametime);
+        ImGui::Text("Draw Time: %fms", mStats.mesh_draw_time);
+        ImGui::Text("Update Time: %fms", mStats.scene_update_time);
+        ImGui::Text("Draws: %i", mStats.drawcall_count);
+        ImGui::Text("Pipeline binds: %i", mStats.pipeline_binds);
+        ImGui::Text("Layout binds: %i", mStats.layout_binds);
+        ImGui::End();
+    }
+    if (ImGui::Begin("Models")) {
+        for (auto& engineModel : mEngineModels) {
+            const auto name = engineModel.first;
+            if (ImGui::TreeNode(name.c_str())) {
+                if (ImGui::Button("Add Instance")) {
+                    EngineInstance newEngineInstance;
+                    newEngineInstance.id = boost::uuids::random_generator()();
+                    newEngineInstance.transformComponents.translation = glm::vec3(0.f);
+                    newEngineInstance.transformComponents.rotation = glm::vec3(0.f);
+                    newEngineInstance.transformComponents.scale = 1.f;
+                    engineModel.second.instances.push_back(newEngineInstance);
+                }
+
+                for (auto& instance : engineModel.second.instances) {
+                    ImGui::SeparatorText(fmt::format("Instance {}", boost::uuids::to_string(instance.id)).c_str());
+                    ImGui::PushID(boost::uuids::to_string(instance.id).c_str());
+                    ImGui::InputFloat3("Translation", &instance.transformComponents.translation[0]);
+                    ImGui::SliderFloat3("Pitch / Yaw / Roll", &instance.transformComponents.rotation[0], -glm::pi<float>(), glm::pi<float>());
+                    ImGui::SliderFloat("Scale", &instance.transformComponents.scale, 0.f, 100.f);
+                    if (ImGui::Button("Remove")) {
+                        instance.toDelete = true;
+                    }
+                    ImGui::PopID();
+                }
+
+                ImGui::TreePop();
+            }
+        }
+        ImGui::End();
+    }
+    ImGui::Render();
+}
+
 void VulkanEngine::run()
 {
     SDL_Event e;
@@ -1269,26 +1354,7 @@ void VulkanEngine::run()
             resize_swapchain();
 
         // Imgui new frame
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL2_NewFrame(mWindow);
-        ImGui::NewFrame();
-        if (ImGui::Begin("Camera")) {
-            ImGui::Text("[F1] Camera Mode: %s", magic_enum::enum_name(mMainCamera.movementMode).data());
-            ImGui::Text("[F2] Mouse Mode: %s", (mMainCamera.relativeMode ? "RELATIVE" : "NORMAL"));
-            ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 100.f, "%.2f");
-            ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z);
-            ImGui::Text("Pitch: %.1f, Yaw: %.1f", mMainCamera.pitch, mMainCamera.yaw);
-            ImGui::End();
-        }
-        if (ImGui::Begin("Stats")) {
-            ImGui::Text("Compile Mode: %s", (bUseValidationLayers ? "DEBUG" : "RELEASE"));
-            ImGui::Text("Frame Time:  %fms", mStats.frametime);
-            ImGui::Text("Draw Time: %fms", mStats.mesh_draw_time);
-            ImGui::Text("Update Time: %fms", mStats.scene_update_time);
-            ImGui::Text("Draws: %i", mStats.drawcall_count);
-            ImGui::End();
-        }
-        ImGui::Render();
+        imgui_frame();
 
         draw();
 
@@ -1387,6 +1453,9 @@ void VulkanEngine::cleanup_per_draw()
     mMatIndexes.clear();
     mNodeIndexes.clear();
     mPrimitiveCommands.clear();
+
+    mLastPipeline = nullptr;
+    mLastPipelineLayout = nullptr;
 }
 
 void VulkanEngine::cleanup_core() const
@@ -1403,7 +1472,7 @@ void VulkanEngine::cleanup()
         vkDeviceWaitIdle(mDevice);
 
         // GLTF scenes cleared by own destructor.
-        mLoadedModels.clear();
+        mEngineModels.clear();
         for (FrameData& frame : mFrames)
             frame.cleanup(mDevice);
         cleanup_immediate();
