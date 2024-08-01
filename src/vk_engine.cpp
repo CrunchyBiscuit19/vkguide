@@ -1,5 +1,4 @@
-﻿//> includes
-#include <vk_engine.h>
+﻿#include <vk_engine.h>
 #include <vk_images.h>
 #include <vk_initializers.h>
 #include <vk_pipelines.h>
@@ -13,7 +12,6 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
-#include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 #include <magic_enum.hpp>
@@ -32,15 +30,9 @@ constexpr bool bUseValidationLayers = false;
 constexpr bool bUseValidationLayers = true;
 #endif
 
-const std::string pipelineCachePath = "../../bin/pipeline_cache.bin";
-const std::filesystem::path modelRootPath { "../../assets" };
-const std::vector<std::filesystem::path> modelFilepaths {
-    //    "scifihelmet/SciFiHelmet.gltf",
-    "stainedglasslamp/StainedGlassLamp.gltf",
-    //    "sponza/Sponza.gltf",
-    //    "structure/structure.gltf",
-    //    "kitchen/kitchen.glb",
-};
+const std::filesystem::path rootPath { "../.." };
+const std::filesystem::path pipelineCachePath { rootPath / "bin/pipeline_cache.bin" };
+const std::filesystem::path modelRootPath { rootPath / "assets" };
 
 VulkanEngine* loadedEngine = nullptr;
 
@@ -78,7 +70,6 @@ void VulkanEngine::init()
     init_buffers();
     init_imgui();
     init_default_data();
-    init_models(modelFilepaths);
     init_push_constants();
     mMainCamera.init();
 
@@ -131,6 +122,10 @@ void VulkanEngine::init_imgui()
 
     immediate_submit([&](VkCommandBuffer cmd) { ImGui_ImplVulkan_CreateFontsTexture(cmd); });
     ImGui_ImplVulkan_DestroyFontUploadObjects();
+
+    mSelectModelFileDialog = ImGui::FileBrowser::FileBrowser(ImGuiFileBrowserFlags_::ImGuiFileBrowserFlags_MultipleSelection, modelRootPath);
+    mSelectModelFileDialog.SetTitle("Select GLTF / GLB file");
+    mSelectModelFileDialog.SetTypeFilters({ ".glb", ".gltf" });
 }
 
 void VulkanEngine::init_vulkan()
@@ -400,25 +395,6 @@ void VulkanEngine::init_default_data()
     mSamplerDeletionQueue.samplers.push_resource(mDevice, mDefaultSamplerNearest, nullptr);
 }
 
-void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelFilePaths)
-{
-    for (const auto& modelFilePath : modelFilePaths) {
-        auto fullModelPath = modelRootPath / modelFilePath;
-        const auto gltfModel = load_gltf_model(this, fullModelPath);
-        assert(gltfModel.has_value());
-
-        EngineModel engineModel(*gltfModel);
-        mEngineModels[modelFilePath.stem().string()] = engineModel;
-
-        fmt::println("Loaded GLTF Model: {}", modelFilePath.filename().string());
-    }
-
-    submit_buffer_updates(mBufferCopyBatches.modelBuffers);
-    mBufferCopyBatches.modelBuffers.clear();
-
-    mBufferDeletionQueue.modelLoadStagingBuffers.flush();
-}
-
 void VulkanEngine::init_push_constants()
 {
     VkBufferDeviceAddressInfo deviceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = mGlobalVertexBuffer.buffer };
@@ -481,26 +457,26 @@ void VulkanEngine::resize_swapchain()
     mResizeRequested = false;
 }
 
-VkPipelineCacheCreateInfo VulkanEngine::read_pipeline_cache(const std::string& filename)
+VkPipelineCacheCreateInfo VulkanEngine::read_pipeline_cache(const std::filesystem::path& filename)
 {
     VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {};
     pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 
     std::ifstream pipelineCacheFile(filename, std::ios::binary | std::ios::ate);
     if (!pipelineCacheFile.is_open()) {
-        fmt::println("Failed to open {}. Returning default VkPipelineCacheCreateInfo.", filename);
+        fmt::println("Failed to open {}. Returning default VkPipelineCacheCreateInfo.", filename.string());
         return pipelineCacheCreateInfo;
     }
 
     const std::streamsize pipelineCacheSize = pipelineCacheFile.tellg();
     if (pipelineCacheSize == -1) {
-        throw std::runtime_error(fmt::format("Failed to determine {} size.", filename));
+        throw std::runtime_error(fmt::format("Failed to determine {} size.", filename.string()));
     }
     mPipelineCacheData.resize(pipelineCacheSize);
 
     pipelineCacheFile.seekg(0);
     if (!pipelineCacheFile.read(mPipelineCacheData.data(), pipelineCacheSize)) {
-        throw std::runtime_error(fmt::format("Failed to read {}.", filename));
+        throw std::runtime_error(fmt::format("Failed to read {}.", filename.string()));
     }
     pipelineCacheCreateInfo.pInitialData = mPipelineCacheData.data();
     pipelineCacheCreateInfo.initialDataSize = pipelineCacheSize;
@@ -508,7 +484,7 @@ VkPipelineCacheCreateInfo VulkanEngine::read_pipeline_cache(const std::string& f
     return pipelineCacheCreateInfo;
 }
 
-void VulkanEngine::write_pipeline_cache(const std::string& filename)
+void VulkanEngine::write_pipeline_cache(const std::filesystem::path& filename)
 {
     size_t dataSize;
     vkGetPipelineCacheData(mDevice, mPipelineCache, &dataSize, nullptr); // Get size first
@@ -518,9 +494,9 @@ void VulkanEngine::write_pipeline_cache(const std::string& filename)
     if (file.is_open()) {
         file.write(mPipelineCacheData.data(), static_cast<long long>(mPipelineCacheData.size()));
         file.close();
-        fmt::println("Pipeline cache successfully written to {}.", filename);
+        fmt::println("Pipeline cache successfully written to {}.", filename.string());
     } else {
-        throw std::runtime_error(fmt::format("Failed to write pipeline cache data to {}.", filename));
+        throw std::runtime_error(fmt::format("Failed to write pipeline cache data to {}.", filename.string()));
     }
 }
 
@@ -691,6 +667,27 @@ void VulkanEngine::destroy_image(const AllocatedImage& img)
 {
     mImageDeletionQueue.imageViews.push_resource(mDevice, img.imageView, nullptr);
     mImageDeletionQueue.images.push_resource(mDevice, img.image, nullptr, mAllocator, img.allocation);
+}
+
+void VulkanEngine::load_models(const std::vector<std::filesystem::path>& modelPaths)
+{
+    for (const auto& modelPath : modelPaths) {
+        if (mEngineModels.contains(modelPath.stem().string())) {
+            continue;
+        }
+
+        auto fullModelPath = modelRootPath / modelPath;
+        const auto gltfModel = load_gltf_model(this, fullModelPath);
+        assert(gltfModel.has_value());
+
+        EngineModel engineModel(*gltfModel);
+        mEngineModels[modelPath.stem().string()] = engineModel;
+    }
+
+    submit_buffer_updates(mBufferCopyBatches.modelBuffers);
+    mBufferCopyBatches.modelBuffers.clear();
+
+    mBufferDeletionQueue.modelLoadStagingBuffers.flush();
 }
 
 ModelBuffers VulkanEngine::upload_model(std::vector<uint32_t>& srcIndexVector, std::vector<Vertex>& srcVertexVector)
@@ -1168,8 +1165,8 @@ void VulkanEngine::draw()
 
     // Multiply by render scale for dynamic resolution
     // When resizing bigger, don't make swapchain extent go beyond draw image extent
-    mDrawExtent.height = std::min(mSwapchainExtent.height, mDrawImage.imageExtent.height) * mRenderScale;
-    mDrawExtent.width = std::min(mSwapchainExtent.width, mDrawImage.imageExtent.width) * mRenderScale;
+    mDrawExtent.height = std::min(mSwapchainExtent.height, mDrawImage.imageExtent.height);
+    mDrawExtent.width = std::min(mSwapchainExtent.width, mDrawImage.imageExtent.width);
 
     // Transition stock and draw image into transfer layouts
     vkutil::transition_image(cmd, mStockImages["blue"].image,
@@ -1301,6 +1298,10 @@ void VulkanEngine::imgui_frame()
         ImGui::End();
     }
     if (ImGui::Begin("Models")) {
+        if (ImGui::Button("Add Model")) {
+            mSelectModelFileDialog.Open();
+        }
+
         for (auto& engineModel : mEngineModels) {
             const auto name = engineModel.first;
             if (ImGui::TreeNode(name.c_str())) {
@@ -1322,7 +1323,7 @@ void VulkanEngine::imgui_frame()
                     ImGui::SliderFloat3("Pitch / Yaw / Roll", &instance.transformComponents.rotation[0], -glm::pi<float>(), glm::pi<float>());
                     ImGui::SliderFloat("Scale", &instance.transformComponents.scale, 0.f, 100.f);
                     ImGui::PushStyleColor(ImGuiCol_Button, static_cast<ImVec4>(ImColor::ImColor(0.66f, 0.16f, 0.16f)));
-                    if (ImGui::Button("Delete")) {
+                    if (ImGui::Button("Delete Instance")) {
                         instance.toDelete = true;
                     }
                     ImGui::PopStyleColor();
@@ -1331,8 +1332,16 @@ void VulkanEngine::imgui_frame()
 
                 ImGui::TreePop();
             }
+            ImGui::Separator();
         }
         ImGui::End();
+
+        mSelectModelFileDialog.Display();
+        if (mSelectModelFileDialog.HasSelected()) {
+            auto selectedFiles = mSelectModelFileDialog.GetMultiSelected();
+            load_models(selectedFiles);
+            mSelectModelFileDialog.ClearSelected();
+        }
     }
     ImGui::Render();
 }

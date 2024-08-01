@@ -6,6 +6,7 @@ add_library(vma INTERFACE)
 add_library(magic_enum INTERFACE)
 add_library(stb_image INTERFACE)
 add_library(boost INTERFACE)
+add_library(imgui-filebrowser INTERFACE)
 
 add_subdirectory(fastgltf)
 add_subdirectory(fmt EXCLUDE_FROM_ALL)
@@ -24,6 +25,7 @@ target_include_directories(vma INTERFACE vma)
 target_include_directories(glm INTERFACE glm)
 target_include_directories(magic_enum INTERFACE magic_enum)
 target_include_directories(boost INTERFACE boost)
+target_include_directories(imgui-filebrowser INTERFACE imgui-filebrowser)
 
 #add_library(sdl2 INTERFACE)
 

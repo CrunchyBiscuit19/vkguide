@@ -1,7 +1,6 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
-// or project specific include files.
+﻿#pragma once
 
-#pragma once
+#define NOMINMAX // imfilebrowser.h contains windows.h
 
 #include <camera.h>
 #include <cvars.h>
@@ -9,6 +8,9 @@
 #include <vk_materials.h>
 #include <vk_models.h>
 #include <vk_types.h>
+
+#include <imgui.h>
+#include <imfilebrowser.h>
 
 #include <map>
 
@@ -80,7 +82,7 @@ public:
     // Window object
     SDL_Window* mWindow { nullptr };
     VkExtent2D mWindowExtent { 1700, 900 };
-    float mRenderScale { 1.0f };
+    ImGui::FileBrowser mSelectModelFileDialog;
 
     // Vulkan stuff
     VkInstance mInstance; // Vulkan library handle
@@ -126,7 +128,8 @@ public:
     // Images
     std::unordered_map<std::string, AllocatedImage> mStockImages;
 
-    AllocatedImage mDrawImage; // Drawn images before copying to swapchain
+    // Draw image before presenting on swapchain
+    AllocatedImage mDrawImage; 
     DescriptorCombined mDrawImageDescriptor;
     VkExtent2D mDrawExtent;
 
@@ -225,15 +228,14 @@ public:
     void init_pipelines();
     void init_buffers();
     void init_default_data();
-    void init_models(const std::vector<std::filesystem::path>& modelFilePaths);
     void init_push_constants();
 
     void create_swapchain(uint32_t width, uint32_t height);
     void destroy_swapchain();
     void resize_swapchain();
 
-    VkPipelineCacheCreateInfo read_pipeline_cache(const std::string& filename);
-    void write_pipeline_cache(const std::string& filename);
+    VkPipelineCacheCreateInfo read_pipeline_cache(const std::filesystem::path& filename);
+    void write_pipeline_cache(const std::filesystem::path& filename);
     MaterialPipeline create_pipeline(PipelineOptions& pipelineOptions);
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue);
@@ -243,6 +245,7 @@ public:
     AllocatedImage create_image(const void* data, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     void destroy_image(const AllocatedImage& img);
 
+    void load_models(const std::vector<std::filesystem::path>& modelFilePaths);
     ModelBuffers upload_model(std::vector<uint32_t>& indices, std::vector<Vertex>& vertices);
 
     AllocatedBuffer create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue);
