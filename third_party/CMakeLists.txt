@@ -5,6 +5,7 @@ add_library(glm INTERFACE)
 add_library(vma INTERFACE)
 add_library(magic_enum INTERFACE)
 add_library(stb_image INTERFACE)
+add_library(boost INTERFACE)
 
 add_subdirectory(fastgltf)
 add_subdirectory(fmt EXCLUDE_FROM_ALL)
@@ -18,12 +19,11 @@ target_sources(vkbootstrap PRIVATE
 target_include_directories(vkbootstrap PUBLIC vkbootstrap)
 target_link_libraries(vkbootstrap PUBLIC Vulkan::Vulkan $<$<BOOL:UNIX>:${CMAKE_DL_LIBS}>)
 
-#both vma and glm and header only libs so we only need the include path
+#Header only libs so we only need the include path
 target_include_directories(vma INTERFACE vma)
-
 target_include_directories(glm INTERFACE glm)
-
 target_include_directories(magic_enum INTERFACE magic_enum)
+target_include_directories(boost INTERFACE boost)
 
 #add_library(sdl2 INTERFACE)
 

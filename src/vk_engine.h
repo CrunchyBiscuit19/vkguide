@@ -253,6 +253,9 @@ public:
     void create_material_constants_buffer();
     void create_indirect_buffer();
 
+    void delete_models();
+    void delete_instances(EngineModel& engineModel);
+
     void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
     void generate_indirect_commands(Primitive& primitive, int instanceCount, int instancesOffset, int& verticesOffset, int& indicesOffset);
     void assign_indirect_groups(MeshNode* meshNode, Primitive& primitive);

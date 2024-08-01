@@ -3,8 +3,9 @@
 add_executable (engine 
   main.cpp
   vk_types.h
-  vk_initializers.cpp
+  vk_types.cpp
   vk_initializers.h
+  vk_initializers.cpp
   vk_images.h
   vk_images.cpp 
   vk_descriptors.h
@@ -30,7 +31,7 @@ set_property(TARGET engine PROPERTY CXX_STANDARD 23)
 target_compile_definitions(engine PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
 target_include_directories(engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-target_link_libraries(engine PUBLIC vma glm Vulkan::Vulkan fmt::fmt stb_image SDL2::SDL2 vkbootstrap imgui fastgltf::fastgltf)
+target_link_libraries(engine PUBLIC vma glm Vulkan::Vulkan fmt::fmt stb_image SDL2::SDL2 vkbootstrap imgui fastgltf::fastgltf magic_enum boost)
 
 target_precompile_headers(engine PUBLIC <optional> <vector> <memory> <string> <vector> <unordered_map> <glm/mat4x4.hpp>  <glm/vec4.hpp> <vulkan/vulkan.h>)
 

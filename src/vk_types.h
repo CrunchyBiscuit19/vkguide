@@ -1,6 +1,4 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
-// or project specific include files.
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <deque>
@@ -13,23 +11,25 @@
 #include <tuple>
 #include <vector>
 
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <fastgltf/types.hpp>
 #include <glm/fwd.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
-#include <fastgltf/types.hpp>
-#include <boost/uuid/uuid.hpp>
 
 #include <vk_descriptors.h>
 
 struct PbrData;
-struct PbrMaterial;
+class PbrMaterial;
 struct MeshData;
 struct MeshNode;
-struct GLTFModel;
+class GLTFModel;
 
 template <class T0>
 struct VulkanResource {
@@ -74,7 +74,7 @@ inline void VulkanResource<VkDescriptorSetLayout>::destroy()
 {
     vkDestroyDescriptorSetLayout(device, object, allocationCallbacks);
 }
-template <>
+template<>
 inline void VulkanResource<VkPipelineLayout>::destroy()
 {
     vkDestroyPipelineLayout(device, object, allocationCallbacks);
@@ -82,37 +82,31 @@ inline void VulkanResource<VkPipelineLayout>::destroy()
 template <>
 inline void VulkanResource<VkPipeline>::destroy()
 {
-
     vkDestroyPipeline(device, object, allocationCallbacks);
 }
 template <>
 inline void VulkanResource<VkFence>::destroy()
 {
-
     vkDestroyFence(device, object, allocationCallbacks);
 }
 template <>
 inline void VulkanResource<VkSemaphore>::destroy()
 {
-
     vkDestroySemaphore(device, object, allocationCallbacks);
 }
 template <>
 inline void VulkanResource<VkCommandPool>::destroy()
 {
-
     vkDestroyCommandPool(device, object, allocationCallbacks);
 }
 template <>
 inline void VulkanResource<VkSwapchainKHR>::destroy()
 {
-
     vkDestroySwapchainKHR(device, object, allocationCallbacks);
 }
 template <>
 inline void VulkanResource<VkImageView>::destroy()
 {
-
     vkDestroyImageView(device, object, allocationCallbacks);
 }
 template <>
@@ -173,16 +167,24 @@ struct InstanceData {
     glm::mat4 transformation;
 };
 
-struct EngineInstance {
+class EngineInstance {
+public:
     boost::uuids::uuid id;
-    bool toDelete {false};
+    bool toDelete;
     TransformationData transformComponents;
     InstanceData data;
+
+    EngineInstance();
 };
 
-struct EngineModel {
+class EngineModel {
+public:
+    bool toDelete;
     std::shared_ptr<GLTFModel> gltfModel;
     std::vector<EngineInstance> instances;
+
+    EngineModel();
+    EngineModel(std::shared_ptr<GLTFModel> argModel);
 };
 
 struct DescriptorCombined {

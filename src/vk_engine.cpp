@@ -407,7 +407,7 @@ void VulkanEngine::init_models(const std::vector<std::filesystem::path>& modelFi
         const auto gltfModel = load_gltf_model(this, fullModelPath);
         assert(gltfModel.has_value());
 
-        EngineModel engineModel { *gltfModel, {} };
+        EngineModel engineModel(*gltfModel);
         mEngineModels[modelFilePath.stem().string()] = engineModel;
 
         fmt::println("Loaded GLTF Model: {}", modelFilePath.filename().string());
@@ -770,6 +770,16 @@ void VulkanEngine::create_indirect_buffer()
     mGlobalIndirectBuffer = create_buffer(indirectBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
+void VulkanEngine::delete_models()
+{
+    std::erase_if(mEngineModels, [](const auto& i) { return i.second.toDelete; });
+}
+
+void VulkanEngine::delete_instances(EngineModel& engineModel)
+{
+    std::erase_if(engineModel.instances, [](EngineInstance& i) { return i.toDelete; });
+}
+
 void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset)
 {
     const VkDeviceSize srcVertexBufferSize = srcVertexBuffer.info.size;
@@ -852,6 +862,8 @@ void VulkanEngine::iterate_models()
 
     int nodeIndex = 0;
 
+    delete_models();
+
     for (const auto& engineModel : mEngineModels | std::views::values) {
         update_vertex_index_buffers(engineModel.gltfModel->mModelBuffers.vertex, vertexBufferOffset, engineModel.gltfModel->mModelBuffers.index, indexBufferOffset);
 
@@ -903,17 +915,15 @@ void VulkanEngine::update_instanced_buffer()
 
     std::vector<InstanceData> instancesData;
     for (auto& engineModel : mEngineModels | std::views::values) {
-        engineModel.instances.erase(std::remove_if(engineModel.instances.begin(), engineModel.instances.end(),
-                                        [](EngineInstance i) { return i.toDelete; }),
-            engineModel.instances.end());
+        delete_instances(engineModel);
 
         for (auto& instance : engineModel.instances) {
-            glm::mat4 translationMatrix = glm::translate(glm::mat4 { 1.0f }, instance.transformComponents.translation);
-            glm::mat4 rotationX = glm::rotate(glm::mat4(1.0f), instance.transformComponents.rotation[0], glm::vec3(1.0f, 0.0f, 0.0f));
-            glm::mat4 rotationY = glm::rotate(glm::mat4(1.0f), instance.transformComponents.rotation[1], glm::vec3(0.0f, 1.0f, 0.0f));
-            glm::mat4 rotationZ = glm::rotate(glm::mat4(1.0f), instance.transformComponents.rotation[2], glm::vec3(0.0f, 0.0f, 1.0f));
+            glm::mat4 translationMatrix = glm::translate(glm::mat4(1.f), instance.transformComponents.translation);
+            glm::mat4 rotationX = glm::rotate(glm::mat4(1.f), instance.transformComponents.rotation[0], glm::vec3(1.f, 0.f, 0.f));
+            glm::mat4 rotationY = glm::rotate(glm::mat4(1.f), instance.transformComponents.rotation[1], glm::vec3(0.f, 1.f, 0.f));
+            glm::mat4 rotationZ = glm::rotate(glm::mat4(1.f), instance.transformComponents.rotation[2], glm::vec3(0.f, 0.f, 1.f));
             glm::mat4 rotationMatrix = rotationZ * rotationY * rotationX;
-            glm::mat4 scaleMatrix = glm::scale(glm::mat4 { 1.0f }, glm::vec3(instance.transformComponents.scale));
+            glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.f), glm::vec3(instance.transformComponents.scale));
             instance.data.transformation = translationMatrix * rotationMatrix * scaleMatrix;
             instancesData.push_back(instance.data);
         }
@@ -1275,6 +1285,9 @@ void VulkanEngine::imgui_frame()
         ImGui::SliderFloat("Speed", &mMainCamera.speed, 0.f, 100.f, "%.2f");
         ImGui::Text("Position: %.1f, %.1f, %.1f", mMainCamera.position.x, mMainCamera.position.y, mMainCamera.position.z);
         ImGui::Text("Pitch: %.1f, Yaw: %.1f", mMainCamera.pitch, mMainCamera.yaw);
+        if (ImGui::Button("Reset position to (0, 0, 0)")) {
+            mMainCamera.position = glm::vec3();
+        }
         ImGui::End();
     }
     if (ImGui::Begin("Stats")) {
@@ -1293,12 +1306,14 @@ void VulkanEngine::imgui_frame()
             if (ImGui::TreeNode(name.c_str())) {
                 if (ImGui::Button("Add Instance")) {
                     EngineInstance newEngineInstance;
-                    newEngineInstance.id = boost::uuids::random_generator()();
-                    newEngineInstance.transformComponents.translation = glm::vec3(0.f);
-                    newEngineInstance.transformComponents.rotation = glm::vec3(0.f);
-                    newEngineInstance.transformComponents.scale = 1.f;
                     engineModel.second.instances.push_back(newEngineInstance);
                 }
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button, static_cast<ImVec4>(ImColor::ImColor(0.66f, 0.16f, 0.16f)));
+                if (ImGui::Button("Delete Model")) {
+                    engineModel.second.toDelete = true;
+                }
+                ImGui::PopStyleColor();
 
                 for (auto& instance : engineModel.second.instances) {
                     ImGui::SeparatorText(fmt::format("Instance {}", boost::uuids::to_string(instance.id)).c_str());
@@ -1306,9 +1321,11 @@ void VulkanEngine::imgui_frame()
                     ImGui::InputFloat3("Translation", &instance.transformComponents.translation[0]);
                     ImGui::SliderFloat3("Pitch / Yaw / Roll", &instance.transformComponents.rotation[0], -glm::pi<float>(), glm::pi<float>());
                     ImGui::SliderFloat("Scale", &instance.transformComponents.scale, 0.f, 100.f);
-                    if (ImGui::Button("Remove")) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, static_cast<ImVec4>(ImColor::ImColor(0.66f, 0.16f, 0.16f)));
+                    if (ImGui::Button("Delete")) {
                         instance.toDelete = true;
                     }
+                    ImGui::PopStyleColor();
                     ImGui::PopID();
                 }
 
