@@ -105,7 +105,7 @@ public:
     VmaAllocator mAllocator;
 
     // Descriptor allocator
-    DescriptorAllocatorGrowable mGlobalDescriptorAllocator;
+    DescriptorAllocatorGrowable mDescriptorAllocator;
 
     // Swapchain
     VkSwapchainKHR mSwapchain;
@@ -130,9 +130,7 @@ public:
 
     // Draw image before presenting on swapchain
     AllocatedImage mDrawImage; 
-    DescriptorCombined mDrawImageDescriptor;
     VkExtent2D mDrawExtent;
-
     AllocatedImage mDepthImage;
 
     // Store copy instructions for buffers
@@ -142,8 +140,8 @@ public:
     } mBufferCopyBatches;
 
     // Geometry data
-    AllocatedBuffer mGlobalVertexBuffer;
-    AllocatedBuffer mGlobalIndexBuffer;
+    AllocatedBuffer mVertexBuffer;
+    AllocatedBuffer mIndexBuffer;
 
     // Instance data
     AllocatedBuffer mInstanceBuffer;
@@ -161,7 +159,7 @@ public:
 
     // Store indirect commands per material
     std::map<IndirectBatchGroup, IndirectBatchData> mIndirectBatches;
-    AllocatedBuffer mGlobalIndirectBuffer;
+    AllocatedBuffer mIndirectBuffer;
     std::unordered_map<PbrMaterial*,int> mMatIndexes;
     std::unordered_map<MeshNode*,int> mNodeIndexes;
     std::unordered_map<Primitive*, VkDrawIndexedIndirectCommand> mPrimitiveCommands;

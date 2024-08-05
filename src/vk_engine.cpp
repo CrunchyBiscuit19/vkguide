@@ -289,49 +289,18 @@ void VulkanEngine::init_sync_structures()
 
 void VulkanEngine::init_descriptors()
 {
-    // Create a descriptor pool that will hold 10 sets with 1 image each
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10000 },
     };
-    mGlobalDescriptorAllocator.init(mDevice, 10, sizes);
+    mDescriptorAllocator.init(mDevice, 10, sizes);
 
-    // Create descriptor set layout for our compute draw
-    {
-        DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        mDrawImageDescriptor.layout = builder.build(mDevice, VK_SHADER_STAGE_COMPUTE_BIT);
-    }
-    // Allocate a descriptor set for our draw image
-    mDrawImageDescriptor.set = mGlobalDescriptorAllocator.allocate(mDevice, mDrawImageDescriptor.layout);
-    DescriptorWriter writer;
-    writer.write_image(0, mDrawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    writer.update_set(mDevice, mDrawImageDescriptor.set);
-
-    // Create descriptor set layout for texture array
     int materialTexturesArraySize = 1000;
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, materialTexturesArraySize);
         mMaterialTexturesArray.layout = builder.build(mDevice, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true);
     }
-    // Allocate a descriptor set for texture array
-    mMaterialTexturesArray.set = mGlobalDescriptorAllocator.allocate(mDevice, mMaterialTexturesArray.layout, true, materialTexturesArraySize);
-
-    for (int i = 0; i < FRAME_OVERLAP; i++) {
-        // create a descriptor pool
-        std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frame_sizes = {
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
-        };
-
-        mFrames[i].mFrameDescriptors = DescriptorAllocatorGrowable {};
-        mFrames[i].mFrameDescriptors.init(mDevice, 1000, frame_sizes);
-    }
-
-    mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mDrawImageDescriptor.layout, nullptr);
+    mMaterialTexturesArray.set = mDescriptorAllocator.allocate(mDevice, mMaterialTexturesArray.layout, true, materialTexturesArraySize);
     mDescriptorDeletionQueue.descriptorSetLayouts.push_resource(mDevice, mMaterialTexturesArray.layout, nullptr);
 }
 
@@ -397,7 +366,7 @@ void VulkanEngine::init_default_data()
 
 void VulkanEngine::init_push_constants()
 {
-    VkBufferDeviceAddressInfo deviceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = mGlobalVertexBuffer.buffer };
+    VkBufferDeviceAddressInfo deviceAddressInfo { .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = mVertexBuffer.buffer };
     mPushConstants.vertexBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
     deviceAddressInfo.buffer = mInstanceBuffer.buffer;
     mPushConstants.instanceBuffer = vkGetBufferDeviceAddress(mDevice, &deviceAddressInfo);
@@ -734,8 +703,8 @@ AllocatedBuffer VulkanEngine::create_staging_buffer(size_t allocSize, DeletionQu
 
 void VulkanEngine::create_vertex_index_buffers()
 {
-    mGlobalVertexBuffer = create_buffer(DEFAULT_VERTEX_BUFFER_SIZE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
-    mGlobalIndexBuffer = create_buffer(DEFAULT_INDEX_BUFFER_SIZE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
+    mVertexBuffer = create_buffer(DEFAULT_VERTEX_BUFFER_SIZE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
+    mIndexBuffer = create_buffer(DEFAULT_INDEX_BUFFER_SIZE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
 void VulkanEngine::create_instance_buffer()
@@ -764,7 +733,7 @@ void VulkanEngine::create_material_constants_buffer()
 void VulkanEngine::create_indirect_buffer()
 {
     const auto indirectBufferSize = MAX_INDIRECT_COMMANDS * sizeof(VkDrawIndexedIndirectCommand);
-    mGlobalIndirectBuffer = create_buffer(indirectBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
+    mIndirectBuffer = create_buffer(indirectBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
 void VulkanEngine::delete_models()
@@ -793,11 +762,11 @@ void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, 
 
     mBufferCopyBatches.perDrawBuffers.emplace_back(
         srcVertexBuffer.buffer,
-        mGlobalVertexBuffer.buffer,
+        mVertexBuffer.buffer,
         std::vector<VkBufferCopy> { vertexCopy });
     mBufferCopyBatches.perDrawBuffers.emplace_back(
         srcIndexBuffer.buffer,
-        mGlobalIndexBuffer.buffer,
+        mIndexBuffer.buffer,
         std::vector<VkBufferCopy> { indexCopy });
 
     vertexBufferOffset += srcVertexBufferSize;
@@ -880,7 +849,7 @@ void VulkanEngine::iterate_models()
 
 void VulkanEngine::update_indirect_buffer()
 {
-    static const AllocatedBuffer stagingBuffer = create_staging_buffer(mGlobalIndirectBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
+    static const AllocatedBuffer stagingBuffer = create_staging_buffer(mIndirectBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
     VkDeviceSize indirectBufferOffset = 0;
@@ -901,7 +870,7 @@ void VulkanEngine::update_indirect_buffer()
 
     mBufferCopyBatches.perDrawBuffers.emplace_back(
         stagingBuffer.buffer,
-        mGlobalIndirectBuffer.buffer,
+        mIndirectBuffer.buffer,
         std::vector<VkBufferCopy> { indirectCopy });
 }
 
@@ -1105,7 +1074,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     scissor.extent.height = mDrawExtent.height;
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    vkCmdBindIndexBuffer(cmd, mGlobalIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(cmd, mIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
     VkDeviceSize indirectBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches) {
@@ -1128,7 +1097,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         mPushConstants.nodeIndex = mNodeIndexes[currentNode];
         vkCmdPushConstants(cmd, currentMaterial->mPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SSBOAddresses), &mPushConstants);
 
-        vkCmdDrawIndexedIndirect(cmd, mGlobalIndirectBuffer.buffer, indirectBufferOffset, indirectCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
+        vkCmdDrawIndexedIndirect(cmd, mIndirectBuffer.buffer, indirectBufferOffset, indirectCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
         indirectBufferOffset += indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
 
         mStats.drawcall_count += indirectCommands.size();
@@ -1422,7 +1391,7 @@ void VulkanEngine::cleanup_swapchain()
 
 void VulkanEngine::cleanup_descriptors()
 {
-    mGlobalDescriptorAllocator.destroy_pools(mDevice);
+    mDescriptorAllocator.destroy_pools(mDevice);
     mDescriptorDeletionQueue.descriptorSetLayouts.flush();
 }
 
