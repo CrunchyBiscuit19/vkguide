@@ -64,7 +64,6 @@ struct FrameData {
         mFrameDeletionQueue.semaphoreDeletion.flush();
         mFrameDeletionQueue.commandPoolDeletion.flush();
         mFrameDeletionQueue.bufferDeletion.flush();
-        mFrameDescriptors.destroy_pools(device);
     }
 };
 
@@ -90,6 +89,8 @@ public:
     VkDevice mDevice; // Vulkan device for commands
     VkSurfaceKHR mSurface; // Vulkan window surface
 
+    VkQueue mComputeQueue;
+    uint32_t mComputeQueueFamily;
     VkQueue mGraphicsQueue;
     uint32_t mGraphicsQueueFamily;
 
@@ -213,7 +214,7 @@ public:
     } mImageDeletionQueue;
 
     static VulkanEngine& Get();
-    void init(); // initializes everything in the engine
+    void init(); 
     void init_imgui();
     void init_vulkan();
     void init_swapchain();
@@ -234,7 +235,7 @@ public:
     void write_pipeline_cache(const std::filesystem::path& filename);
     MaterialPipeline create_pipeline(PipelineOptions& pipelineOptions);
 
-    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue);
+    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
     void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
 
     AllocatedImage create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
@@ -266,7 +267,7 @@ public:
     void update_scene_buffer();
     void update_node_transform_buffer();
     void update_material_buffer();
-    void update_material_texture_array();
+    void update_material_texture_array() const;
     void submit_buffer_updates(std::vector<BufferCopyBatch>& bufferCopyBatches) const;
     void update_draw_data();
 

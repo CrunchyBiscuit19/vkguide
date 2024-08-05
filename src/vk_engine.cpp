@@ -529,7 +529,7 @@ MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
     return materialPipeline;
 }
 
-AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue)
+AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue) const
 {
     VkBufferCreateInfo bufferInfo = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     bufferInfo.pNext = nullptr;
@@ -989,7 +989,7 @@ void VulkanEngine::update_material_buffer()
         std::vector<VkBufferCopy> { materialCopy });
 }
 
-void VulkanEngine::update_material_texture_array()
+void VulkanEngine::update_material_texture_array() const
 {
     DescriptorWriter writer;
 
@@ -1437,7 +1437,6 @@ void VulkanEngine::cleanup_misc() const
 
 void VulkanEngine::cleanup_per_draw()
 {
-    get_current_frame().mFrameDescriptors.clear_pools(mDevice);
     get_current_frame().mFrameDeletionQueue.bufferDeletion.flush(); // For buffers that are used by cmd buffers. Wait for fence of this frame to be reset before flushing.
     mBufferDeletionQueue.perDrawBuffers.flush();
     mBufferCopyBatches.perDrawBuffers.clear();
