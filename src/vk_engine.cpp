@@ -476,11 +476,9 @@ MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
     }
 
     VkShaderModule meshFragShader;
-    if (!vkutil::load_shader_module("../../shaders/mesh.frag.spv", mDevice, &meshFragShader))
-        fmt::println("Error when building the triangle fragment shader module");
+    vkutil::load_shader_module("../../shaders/mesh.frag.spv", mDevice, &meshFragShader);
     VkShaderModule meshVertexShader;
-    if (!vkutil::load_shader_module("../../shaders/mesh.vert.spv", mDevice, &meshVertexShader))
-        fmt::println("Error when building the triangle vertex shader module");
+    vkutil::load_shader_module("../../shaders/mesh.vert.spv", mDevice, &meshVertexShader);
 
     VkPushConstantRange ssboAddressesRange {};
     ssboAddressesRange.offset = 0;

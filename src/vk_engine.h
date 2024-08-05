@@ -51,8 +51,6 @@ struct FrameData {
     VkSemaphore mSwapchainSemaphore, mRenderSemaphore;
     VkFence mRenderFence;
 
-    DescriptorAllocatorGrowable mFrameDescriptors;
-
     struct FrameDeletionQueue {
         DeletionQueue<VkFence> fenceDeletion;
         DeletionQueue<VkSemaphore> semaphoreDeletion;
