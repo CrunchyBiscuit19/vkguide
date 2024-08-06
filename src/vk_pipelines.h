@@ -8,7 +8,12 @@ bool load_shader_module(const char* filePath,
 
 };
 
-class PipelineBuilder {
+struct PipelineCombined {
+    VkPipeline pipeline;
+    VkPipelineLayout layout;
+};
+
+class GraphicsPipelineBuilder {
 public:
     std::vector<VkPipelineShaderStageCreateInfo> mShaderStages;
     VkPipelineInputAssemblyStateCreateInfo mInputAssembly;
@@ -21,7 +26,7 @@ public:
     VkFormat mColorAttachmentformat;
     VkPipelineCache mPipelineCache;
 
-    PipelineBuilder();
+    GraphicsPipelineBuilder();
 
     void clear();
     VkPipeline build_pipeline(VkDevice device) const;
@@ -37,4 +42,16 @@ public:
     void set_depth_format(VkFormat format);
     void disable_depthtest();
     void enable_depthtest(bool depthWriteEnable, VkCompareOp op);
+};
+
+class ComputePipelineBuilder {
+public:
+    VkPipelineShaderStageCreateInfo mComputeShaderStageCreateInfo;
+    VkPipelineLayout mPipelineLayout;
+    VkPipelineCache mPipelineCache;
+
+    ComputePipelineBuilder() = default;
+
+    void set_shader(VkShaderModule computeShader);
+    VkPipeline build_pipeline(VkDevice device) const;
 };

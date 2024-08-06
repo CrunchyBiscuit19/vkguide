@@ -1,4 +1,6 @@
 #extension GL_EXT_buffer_reference : require
+#extension GL_EXT_debug_printf : require
+#extension GL_ARB_shader_draw_parameters : require
 
 layout (set = 0, binding = 0) uniform sampler2D materialTextures[];
 

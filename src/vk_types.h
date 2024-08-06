@@ -222,12 +222,11 @@ struct IndirectBatchGroup {
     PbrMaterial* mat;
     MeshNode* node;
 
-    inline bool operator==(const IndirectBatchGroup& other) const
+    bool operator==(const IndirectBatchGroup& other) const
     {
         return (mat == other.mat && node == other.node);
     }
-
-    inline bool operator<(const IndirectBatchGroup& other) const
+    bool operator<(const IndirectBatchGroup& other) const
     {
         if (mat != other.mat) {
             return (mat < other.mat);

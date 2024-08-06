@@ -117,7 +117,8 @@ public:
     // Pipelines
     std::vector<char> mPipelineCacheData;
     VkPipelineCache mPipelineCache;
-    std::unordered_map<PipelineOptions, MaterialPipeline> mPipelinesCreated;
+    std::unordered_map<PipelineOptions, PipelineCombined> mPipelinesCreated;
+    PipelineCombined mComputePipeline;
     VkPipeline mLastPipeline { nullptr };
     VkPipelineLayout mLastPipelineLayout { nullptr };
 
@@ -233,7 +234,8 @@ public:
 
     VkPipelineCacheCreateInfo read_pipeline_cache(const std::filesystem::path& filename);
     void write_pipeline_cache(const std::filesystem::path& filename);
-    MaterialPipeline create_pipeline(PipelineOptions& pipelineOptions);
+    PipelineCombined create_material_pipeline(PipelineOptions& pipelineOptions);
+    void create_compute_pipeline();
 
     AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
     void destroy_buffer(const AllocatedBuffer& buffer, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
@@ -245,7 +247,7 @@ public:
     void load_models(const std::vector<std::filesystem::path>& modelFilePaths);
     ModelBuffers upload_model(std::vector<uint32_t>& indices, std::vector<Vertex>& vertices);
 
-    AllocatedBuffer create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue);
+    AllocatedBuffer create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
     void create_vertex_index_buffers();
     void create_instance_buffer();
     void create_scene_buffer();
@@ -254,7 +256,7 @@ public:
     void create_indirect_buffer();
 
     void delete_models();
-    void delete_instances(EngineModel& engineModel);
+    static void delete_instances(EngineModel& engineModel);
 
     void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
     void generate_indirect_commands(Primitive& primitive, int instanceCount, int instancesOffset, int& verticesOffset, int& indicesOffset);

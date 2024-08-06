@@ -132,17 +132,19 @@ void VulkanEngine::init_vulkan()
 {
     vkb::InstanceBuilder builder;
 
-    // make the vulkan instance, with basic debug features
-    auto inst_ret = builder.set_app_name("Example Vulkan Application")
+    VkValidationFeatureEnableEXT validationFeaturesEnables[] = { VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT };
+    auto instResult = builder.set_app_name("Vulkan renderer")
                         .request_validation_layers(bUseValidationLayers)
+                        .set_debug_messenger_severity(VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
                         .use_default_debug_messenger()
                         .require_api_version(1, 3, 0)
+                        .add_validation_feature_enable(validationFeaturesEnables[0])
                         .build();
 
-    const vkb::Instance vkb_inst = inst_ret.value();
+    const vkb::Instance vkbInst = instResult.value();
 
-    mInstance = vkb_inst.instance;
-    mDebugMessenger = vkb_inst.debug_messenger;
+    mInstance = vkbInst.instance;
+    mDebugMessenger = vkbInst.debug_messenger;
 
     SDL_Vulkan_CreateSurface(mWindow, mInstance, &mSurface);
 
@@ -157,16 +159,19 @@ void VulkanEngine::init_vulkan()
     features12.runtimeDescriptorArray = true;
     features12.descriptorBindingSampledImageUpdateAfterBind = true;
     features12.descriptorBindingVariableDescriptorCount = true;
+    VkPhysicalDeviceVulkan11Features features11 {};
+    features11.shaderDrawParameters = true;
     VkPhysicalDeviceFeatures features {};
     features.multiDrawIndirect = true;
 
     // Use vkbootstrap to select a gpu.
     // A gpu that can write to the SDL surface and supports vulkan 1.3 with the correct features
-    vkb::PhysicalDeviceSelector selector { vkb_inst };
+    vkb::PhysicalDeviceSelector selector { vkbInst };
     vkb::PhysicalDevice physicalDevice = selector
                                              .set_minimum_version(1, 3)
                                              .set_required_features_13(features13)
                                              .set_required_features_12(features12)
+                                             .set_required_features_11(features11)
                                              .set_required_features(features)
                                              .set_surface(mSurface)
                                              .select()
@@ -178,11 +183,13 @@ void VulkanEngine::init_vulkan()
     mDevice = vkbDevice.device;
     mChosenGPU = physicalDevice.physical_device;
 
-    // Get a graphics queue / family
+    // Get a graphics and compute queue / family
+    mComputeQueue = vkbDevice.get_queue(vkb::QueueType::compute).value();
+    mComputeQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::compute).value();
     mGraphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     mGraphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 
-    // Initialize the memory _allocator
+    // Initialize the memory allocator
     VmaAllocatorCreateInfo allocatorInfo = {};
     allocatorInfo.physicalDevice = mChosenGPU;
     allocatorInfo.device = mDevice;
@@ -469,7 +476,7 @@ void VulkanEngine::write_pipeline_cache(const std::filesystem::path& filename)
     }
 }
 
-MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
+PipelineCombined VulkanEngine::create_material_pipeline(PipelineOptions& pipelineOptions)
 {
     if (mPipelinesCreated.contains(pipelineOptions)) {
         return mPipelinesCreated[pipelineOptions];
@@ -486,21 +493,21 @@ MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
     ssboAddressesRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     std::vector<VkDescriptorSetLayout> layouts = { mMaterialTexturesArray.layout };
-    VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
-    mesh_layout_info.pSetLayouts = layouts.data();
-    mesh_layout_info.setLayoutCount = layouts.size();
-    mesh_layout_info.pPushConstantRanges = &ssboAddressesRange;
-    mesh_layout_info.pushConstantRangeCount = 1;
+    VkPipelineLayoutCreateInfo meshLayoutInfo = vkinit::pipeline_layout_create_info();
+    meshLayoutInfo.pSetLayouts = layouts.data();
+    meshLayoutInfo.setLayoutCount = layouts.size();
+    meshLayoutInfo.pPushConstantRanges = &ssboAddressesRange;
+    meshLayoutInfo.pushConstantRangeCount = 1;
 
     VkPipelineLayout newLayout;
-    VK_CHECK(vkCreatePipelineLayout(mDevice, &mesh_layout_info, nullptr, &newLayout));
+    VK_CHECK(vkCreatePipelineLayout(mDevice, &meshLayoutInfo, nullptr, &newLayout));
 
     VkCullModeFlags cullMode;
     (pipelineOptions.doubleSided) ? (cullMode = VK_CULL_MODE_NONE) : (cullMode = VK_CULL_MODE_BACK_BIT);
     bool transparency;
     (pipelineOptions.alphaMode == fastgltf::AlphaMode::Blend) ? (transparency = true) : (transparency = false);
 
-    PipelineBuilder pipelineBuilder;
+    GraphicsPipelineBuilder pipelineBuilder;
     pipelineBuilder.set_shaders(meshVertexShader, meshFragShader);
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
@@ -517,7 +524,7 @@ MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
     pipelineBuilder.mPipelineLayout = newLayout;
     pipelineBuilder.mPipelineCache = mPipelineCache;
 
-    MaterialPipeline materialPipeline(pipelineBuilder.build_pipeline(mDevice), newLayout);
+    PipelineCombined materialPipeline(pipelineBuilder.build_pipeline(mDevice), newLayout);
 
     vkDestroyShaderModule(mDevice, meshFragShader, nullptr);
     vkDestroyShaderModule(mDevice, meshVertexShader, nullptr);
@@ -527,6 +534,27 @@ MaterialPipeline VulkanEngine::create_pipeline(PipelineOptions& pipelineOptions)
     mPipelinesCreated[pipelineOptions] = materialPipeline;
 
     return materialPipeline;
+}
+
+void VulkanEngine::create_compute_pipeline()
+{
+    VkShaderModule computeShaderModule;
+    vkutil::load_shader_module("../../shaders/x.comp", mDevice, &computeShaderModule);
+
+    VkPipelineLayoutCreateInfo computeLayoutInfo {};
+    computeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    computeLayoutInfo.setLayoutCount = 0;
+    computeLayoutInfo.pSetLayouts = nullptr;
+
+    VkPipelineLayout computePipelineLayout;
+    VK_CHECK(vkCreatePipelineLayout(mDevice, &computeLayoutInfo, nullptr, &computePipelineLayout));
+
+    ComputePipelineBuilder computePipelineBuilder;
+    computePipelineBuilder.set_shader(computeShaderModule);
+    computePipelineBuilder.mPipelineLayout = computePipelineLayout;
+    computePipelineBuilder.mPipelineCache = mPipelineCache;
+
+    mComputePipeline.pipeline = computePipelineBuilder.build_pipeline(mDevice);
 }
 
 AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, DeletionQueue<VkBuffer>& bufferDeletionQueue) const
@@ -694,7 +722,7 @@ ModelBuffers VulkanEngine::upload_model(std::vector<uint32_t>& srcIndexVector, s
     return modelBuffers;
 }
 
-AllocatedBuffer VulkanEngine::create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue)
+AllocatedBuffer VulkanEngine::create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue) const
 {
     return create_buffer(allocSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, bufferDeletionQueue);
 }
@@ -843,6 +871,20 @@ void VulkanEngine::iterate_models()
 
         instancesOffset += engineModel.instances.size();
     }
+
+    // Fill the primitives with material index and transform index, split each transform index into separate, duplicated primitive
+    // Maybe CPU side fill the vertices and indices offset first before sending it off to compute?
+    // Ensure the material buffer and transform buffers are updated the same order as when they are assigned to primitives
+    // Compute shader will generate indirect commands from the primitives, 1 material index and 1 transform index
+    // Vertex shader will get values of materials and transforms from the index within each indirect command
+
+    // Iterate over the nodes to get transform index and assign to each primitive
+    // Primitves should now be assigned material index instead of the material pointer
+    // Update vertex-index, material, transform, primitive buffer in between compute shader calls
+
+    // Buffers
+    // 1. Primitive buffer
+    // 2. Indirect buffer
 }
 
 void VulkanEngine::update_indirect_buffer()

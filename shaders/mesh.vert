@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 #extension GL_GOOGLE_include_directive : require
 
@@ -10,6 +10,9 @@ layout (location = 2) out vec4 outColor;
 
 void main() 
 {
+	if (gl_DrawID >= 1) {
+	debugPrintfEXT("Draw ID: %d", gl_DrawID);
+	}
 
 	Vertex v = constants.vertexBuffer.vertices[gl_VertexIndex];
 	vec4 position = vec4(v.position, 1.0f);

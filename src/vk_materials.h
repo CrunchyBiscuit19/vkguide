@@ -1,6 +1,8 @@
 #pragma once
 
 #include "fastgltf/types.hpp"
+
+#include <vk_pipelines.h>
 #include <vk_types.h>
 
 class VulkanEngine;
@@ -33,18 +35,13 @@ struct PbrData {
     MaterialResources resources;
 };
 
-struct MaterialPipeline {
-    VkPipeline pipeline;
-    VkPipelineLayout layout;
-};
-
 class PbrMaterial {
     VulkanEngine* mEngine;
 
 public:
     std::string mName;
 
-    MaterialPipeline mPipeline;
+    PipelineCombined mPipeline;
     PbrData mData;
 
     PbrMaterial(VulkanEngine* engine);
