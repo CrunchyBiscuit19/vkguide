@@ -23,15 +23,15 @@ public:
 
     ModelBuffers mModelBuffers;
 
-    std::unordered_map<std::string, std::shared_ptr<Node>> mNodes;
+    std::vector<std::shared_ptr<Node>> mNodes;
     std::vector<std::shared_ptr<Node>> mTopNodes;
 
-    std::unordered_map<std::string, std::shared_ptr<MeshData>> mMeshes;
+    std::vector<std::shared_ptr<MeshData>> mMeshes;
 
-    std::unordered_map<std::string, AllocatedImage> mImages;
+    std::vector<AllocatedImage> mImages;
     std::vector<VkSampler> mSamplers;
 
-    std::unordered_map<std::string, std::shared_ptr<PbrMaterial>> mMaterials;
+    std::vector<std::shared_ptr<PbrMaterial>> mMaterials;
 
     VulkanEngine* mEngine;
 
@@ -39,9 +39,9 @@ public:
     ~GLTFModel();
 
 private:
-    VkFilter extract_filter(fastgltf::Filter filter);
-    VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
-    std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
+    static VkFilter extract_filter(fastgltf::Filter filter);
+    static VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
+    static std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
 
     void cleanup() const;
 };

@@ -255,14 +255,12 @@ public:
     void create_material_constants_buffer();
     void create_indirect_buffer();
 
-    void delete_models();
-    static void delete_instances(EngineModel& engineModel);
-
-    void update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset);
-    void generate_indirect_commands(Primitive& primitive, int instanceCount, int instancesOffset, int& verticesOffset, int& indicesOffset);
+	void delete_objects();
+    void update_geometry_buffers();
+	void generate_indirect_commands();
     void assign_indirect_groups(MeshNode* meshNode, Primitive& primitive);
     void traverse_nodes(Node* startingNode, std::vector<glm::mat4>& nodeTransformMatrices, int& nodeIndex);
-    void iterate_models();
+    void iterate_nodes();
 
     void update_indirect_buffer();
     void update_instanced_buffer();

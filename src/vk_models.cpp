@@ -27,38 +27,27 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     }
 
     // Temporal arrays for all the objects to use while creating the GLTF data
-    std::vector<AllocatedImage> images;
-    std::vector<std::shared_ptr<PbrMaterial>> materials;
-    std::vector<std::shared_ptr<MeshData>> meshes;
-    std::vector<std::shared_ptr<Node>> nodes;
     std::vector<uint32_t> modelIndices;
     std::vector<Vertex> modelVertices;
 
     // Load textures, with checkerboard as placeholder for loading errors
     int imageIndex = 0;
-    images.reserve(asset.images.size());
+    mImages.resize(asset.images.size());
 
     for (fastgltf::Image& image : asset.images) {
-        auto imageName = std::string(image.name);
-        if (imageName.empty()) {
-            imageName = fmt::format("{}", imageIndex);
-        }
-
         std::optional<AllocatedImage> loadedImage = load_image(engine, asset, image);
         if (loadedImage.has_value()) {
-            images.push_back(*loadedImage);
-            mImages[fmt::format("{}_image_{}", mName, imageName)] = *loadedImage;
+            mImages[imageIndex] = *loadedImage;
         } else {
             // Failed to load -> default checkerboard texture
-            images.push_back(engine->mStockImages["checkerboard"]);
+            mImages[imageIndex] = engine->mStockImages["checkerboard"];
         }
-
         imageIndex++;
     }
 
     // Load materials
     int materialIndex = 0;
-    materials.reserve(asset.materials.size());
+    mMaterials.resize(asset.materials.size());
 
     for (fastgltf::Material& mat : asset.materials) {
         std::shared_ptr<PbrMaterial> newMat = std::make_shared<PbrMaterial>(engine);
@@ -68,10 +57,8 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
             matName = fmt::format("{}", materialIndex);
         }
         newMat->mName = fmt::format("{}_mat_{}", mName, matName);
-        mMaterials[newMat->mName] = newMat;
 
-        materials.push_back(newMat);
-
+        // Constants
         newMat->mData.constants.baseFactor.x = mat.pbrData.baseColorFactor[0];
         newMat->mData.constants.baseFactor.y = mat.pbrData.baseColorFactor[1];
         newMat->mData.constants.baseFactor.z = mat.pbrData.baseColorFactor[2];
@@ -81,7 +68,6 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
         newMat->mData.constants.emissiveFactor.x = mat.emissiveFactor[0];
         newMat->mData.constants.emissiveFactor.y = mat.emissiveFactor[1];
         newMat->mData.constants.emissiveFactor.z = mat.emissiveFactor[2];
-
         newMat->mData.alphaMode = mat.alphaMode;
         newMat->mData.doubleSided = mat.doubleSided;
 
@@ -101,47 +87,46 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
         if (mat.pbrData.baseColorTexture.has_value()) {
             size_t img = asset.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
             size_t sampler = asset.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value();
-            newMat->mData.resources.base.image = images[img];
+            newMat->mData.resources.base.image = mImages[img];
             newMat->mData.resources.base.sampler = mSamplers[sampler];
         }
         if (mat.pbrData.metallicRoughnessTexture.has_value()) {
             size_t img = asset.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].imageIndex.value();
             size_t sampler = asset.textures[mat.pbrData.metallicRoughnessTexture.value().textureIndex].samplerIndex.value();
-            newMat->mData.resources.metallicRoughness.image = images[img];
+            newMat->mData.resources.metallicRoughness.image = mImages[img];
             newMat->mData.resources.metallicRoughness.sampler = mSamplers[sampler];
         }
         if (mat.normalTexture.has_value()) {
             size_t img = asset.textures[mat.normalTexture.value().textureIndex].imageIndex.value();
             size_t sampler = asset.textures[mat.normalTexture.value().textureIndex].samplerIndex.value();
-            newMat->mData.resources.normal.image = images[img];
+            newMat->mData.resources.normal.image = mImages[img];
             newMat->mData.resources.normal.sampler = mSamplers[sampler];
         }
         if (mat.occlusionTexture.has_value()) {
             size_t img = asset.textures[mat.occlusionTexture.value().textureIndex].imageIndex.value();
             size_t sampler = asset.textures[mat.occlusionTexture.value().textureIndex].samplerIndex.value();
-            newMat->mData.resources.occlusion.image = images[img];
+            newMat->mData.resources.occlusion.image = mImages[img];
             newMat->mData.resources.occlusion.sampler = mSamplers[sampler];
         }
         if (mat.emissiveTexture.has_value()) {
             size_t img = asset.textures[mat.emissiveTexture.value().textureIndex].imageIndex.value();
             size_t sampler = asset.textures[mat.emissiveTexture.value().textureIndex].samplerIndex.value();
-            newMat->mData.resources.emissive.image = images[img];
+            newMat->mData.resources.emissive.image = mImages[img];
             newMat->mData.resources.emissive.sampler = mSamplers[sampler];
         }
 
         newMat->create_material();
-
+        mMaterials[materialIndex] = newMat;
         materialIndex++;
     }
 
     // Load meshes
+    int meshIndex = 0;
+    mMeshes.resize(asset.meshes.size());
+
     for (fastgltf::Mesh& mesh : asset.meshes) {
-        std::shared_ptr<MeshData> newmesh = std::make_shared<MeshData>();
-
-        newmesh->mName = fmt::format("{}_mesh_{}", mName, mesh.name);
-
-        meshes.push_back(newmesh);
-        mMeshes[newmesh->mName] = newmesh;
+        std::shared_ptr<MeshData> newMesh = std::make_shared<MeshData>();
+        newMesh->mName = fmt::format("{}_mesh_{}", mName, mesh.name);
 
         // Load primitives (of each mesh)
         for (auto&& p : mesh.primitives) {
@@ -200,28 +185,31 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
             }
 
             if (p.materialIndex.has_value())
-                newPrimitive.material = materials[p.materialIndex.value()];
+                newPrimitive.material = mMaterials[p.materialIndex.value()];
             else
-                newPrimitive.material = materials[0];
+                newPrimitive.material = mMaterials[0];
 
             // Loop the vertices of this surface, find min/max bounds
             glm::vec3 minpos = newPrimitive.vertices[0].position;
             glm::vec3 maxpos = newPrimitive.vertices[0].position;
-            for (int i = 0; i < newPrimitive.vertices.size(); i++) {
-                minpos = glm::min(minpos, newPrimitive.vertices[i].position);
-                maxpos = glm::max(maxpos, newPrimitive.vertices[i].position);
+            for (const auto& vertex : newPrimitive.vertices) {
+                minpos = glm::min(minpos, vertex.position);
+                maxpos = glm::max(maxpos, vertex.position);
             }
             // Calculate origin and extents from the min/max, use extent length for radius
             newPrimitive.bounds.origin = (maxpos + minpos) / 2.f;
             newPrimitive.bounds.extents = (maxpos - minpos) / 2.f;
             newPrimitive.bounds.sphereRadius = glm::length(newPrimitive.bounds.extents);
 
-            newmesh->mPrimitives.push_back(newPrimitive);
+            newMesh->mPrimitives.push_back(newPrimitive);
         }
+
+        mMeshes[meshIndex] = newMesh;
+        meshIndex++;
     }
 
-    // Load vertices and indices in the mapped order of the meshes
-    for (const auto& mesh : mMeshes | std::views::values) {
+    // Load vertices and indices if the meshes
+    for (const auto& mesh : mMeshes) {
         for (auto& primitive : mesh->mPrimitives) {
             modelIndices.insert(modelIndices.end(), primitive.indices.begin(), primitive.indices.end());
             modelVertices.insert(modelVertices.end(), primitive.vertices.begin(), primitive.vertices.end());
@@ -231,21 +219,20 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
     }
 
     // Load all nodes and their meshes
+    int nodeIndex = 0;
+    mNodes.resize(asset.nodes.size());
+
     for (fastgltf::Node& node : asset.nodes) {
         std::shared_ptr<Node> newNode;
-
         // Find if the node has a mesh, and if it does hook it to the mesh pointer and allocate it with the meshnode class
         if (node.meshIndex.has_value()) {
             newNode = std::make_shared<MeshNode>();
-            dynamic_cast<MeshNode*>(newNode.get())->mMesh = meshes[*node.meshIndex]; // Optional return value, not dereference
+            dynamic_cast<MeshNode*>(newNode.get())->mMesh = mMeshes[*node.meshIndex];
         } else {
             newNode = std::make_shared<Node>();
         }
 
         newNode->mName = fmt::format("{}_node_{}", mName, node.name);
-
-        nodes.push_back(newNode);
-        mNodes[newNode->mName];
 
         // First function if it's a mat4 transform, second function if it's separate transform / rotate / scale quaternion or vec3
         std::visit(fastgltf::visitor { [&](const fastgltf::Node::TransformMatrix& matrix) {
@@ -265,21 +252,24 @@ GLTFModel::GLTFModel(VulkanEngine* engine, fastgltf::Asset& asset, std::filesyst
                            newNode->mLocalTransform = tm * rm * sm;
                        } },
             node.transform);
+
+        mNodes[nodeIndex] = newNode;
+        nodeIndex++;
     }
 
     // Loop GLTF asset nodes, then loop their child node indexes, then use those indexes to access and connect the temporal varirable nodes
     for (int i = 0; i < asset.nodes.size(); i++) {
-        fastgltf::Node& node = asset.nodes[i];
-        std::shared_ptr<Node>& sceneNode = nodes[i];
+        fastgltf::Node& gltfNode = asset.nodes[i];
+        std::shared_ptr<Node>& sceneNode = mNodes[i];
 
-        for (auto& c : node.children) {
-            sceneNode->mChildren.push_back(nodes[c]);
-            nodes[c]->mParent = sceneNode;
+        for (auto& childNodeIndex : gltfNode.children) {
+            sceneNode->mChildren.push_back(mNodes[childNodeIndex]);
+            mNodes[childNodeIndex]->mParent = sceneNode;
         }
     }
 
     // Find the top nodes, with no parents
-    for (auto& node : nodes) {
+    for (auto& node : mNodes) {
         if (node->mParent.lock() == nullptr) {
             mTopNodes.push_back(node);
             node->refreshTransform(glm::mat4 { 1.f });

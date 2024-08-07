@@ -218,8 +218,7 @@ void ComputePipelineBuilder::set_shader(VkShaderModule computeShader)
 
 VkPipeline ComputePipelineBuilder::build_pipeline(VkDevice device) const
 {
-    VkComputePipelineCreateInfo computePipelineInfo {};
-    computePipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    VkComputePipelineCreateInfo computePipelineInfo = { .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
     computePipelineInfo.layout = mPipelineLayout;
     computePipelineInfo.stage = mComputeShaderStageCreateInfo;
 

@@ -65,8 +65,8 @@ void VulkanEngine::init()
     init_commands();
     init_sync_structures();
     init_descriptors();
-    init_pipelines();
     init_pipeline_caches();
+    //init_pipelines();
     init_buffers();
     init_imgui();
     init_default_data();
@@ -134,12 +134,12 @@ void VulkanEngine::init_vulkan()
 
     VkValidationFeatureEnableEXT validationFeaturesEnables[] = { VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT };
     auto instResult = builder.set_app_name("Vulkan renderer")
-                        .request_validation_layers(bUseValidationLayers)
-                        .set_debug_messenger_severity(VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
-                        .use_default_debug_messenger()
-                        .require_api_version(1, 3, 0)
-                        .add_validation_feature_enable(validationFeaturesEnables[0])
-                        .build();
+                          .request_validation_layers(bUseValidationLayers)
+                          .set_debug_messenger_severity(VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
+                          .use_default_debug_messenger()
+                          .require_api_version(1, 3, 0)
+                          .add_validation_feature_enable(validationFeaturesEnables[0])
+                          .build();
 
     const vkb::Instance vkbInst = instResult.value();
 
@@ -319,6 +319,7 @@ void VulkanEngine::init_pipeline_caches()
 
 void VulkanEngine::init_pipelines()
 {
+    create_compute_pipeline();
 }
 
 void VulkanEngine::init_buffers()
@@ -503,7 +504,8 @@ PipelineCombined VulkanEngine::create_material_pipeline(PipelineOptions& pipelin
     VK_CHECK(vkCreatePipelineLayout(mDevice, &meshLayoutInfo, nullptr, &newLayout));
 
     VkCullModeFlags cullMode;
-    (pipelineOptions.doubleSided) ? (cullMode = VK_CULL_MODE_NONE) : (cullMode = VK_CULL_MODE_BACK_BIT);
+    //(pipelineOptions.doubleSided) ? (cullMode = VK_CULL_MODE_NONE) : (cullMode = VK_CULL_MODE_BACK_BIT);
+    cullMode = VK_CULL_MODE_BACK_BIT;
     bool transparency;
     (pipelineOptions.alphaMode == fastgltf::AlphaMode::Blend) ? (transparency = true) : (transparency = false);
 
@@ -539,7 +541,7 @@ PipelineCombined VulkanEngine::create_material_pipeline(PipelineOptions& pipelin
 void VulkanEngine::create_compute_pipeline()
 {
     VkShaderModule computeShaderModule;
-    vkutil::load_shader_module("../../shaders/x.comp", mDevice, &computeShaderModule);
+    vkutil::load_shader_module("../../shaders/generate_draw_commands.comp", mDevice, &computeShaderModule);
 
     VkPipelineLayoutCreateInfo computeLayoutInfo {};
     computeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -762,56 +764,80 @@ void VulkanEngine::create_indirect_buffer()
     mIndirectBuffer = create_buffer(indirectBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
-void VulkanEngine::delete_models()
+void VulkanEngine::delete_objects()
 {
     std::erase_if(mEngineModels, [](const auto& i) { return i.second.toDelete; });
+    for (auto& engineModel : mEngineModels | std::views::values) {
+        std::erase_if(engineModel.instances, [](const auto& instance) { return instance.toDelete; });
+    }
 }
 
-void VulkanEngine::delete_instances(EngineModel& engineModel)
+void VulkanEngine::update_geometry_buffers()
 {
-    std::erase_if(engineModel.instances, [](EngineInstance& i) { return i.toDelete; });
+    int vertexBufferOffset = 0;
+    int indexBufferOffset = 0;
+
+    for (const auto& engineModel : mEngineModels | std::views::values) {
+        const VkDeviceSize srcVertexBufferSize = engineModel.gltfModel->mModelBuffers.vertex.info.size;
+        const VkDeviceSize srcIndexBufferSize = engineModel.gltfModel->mModelBuffers.index.info.size;
+
+        VkBufferCopy vertexCopy {};
+        vertexCopy.dstOffset = vertexBufferOffset;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = srcVertexBufferSize;
+        VkBufferCopy indexCopy {};
+        indexCopy.dstOffset = indexBufferOffset;
+        indexCopy.srcOffset = 0;
+        indexCopy.size = srcIndexBufferSize;
+
+        mBufferCopyBatches.perDrawBuffers.emplace_back(
+            engineModel.gltfModel->mModelBuffers.vertex.buffer,
+            mVertexBuffer.buffer,
+            std::vector { vertexCopy });
+        mBufferCopyBatches.perDrawBuffers.emplace_back(
+            engineModel.gltfModel->mModelBuffers.index.buffer,
+            mIndexBuffer.buffer,
+            std::vector { indexCopy });
+
+        vertexBufferOffset += srcVertexBufferSize;
+        indexBufferOffset += srcIndexBufferSize;
+    }
 }
 
-void VulkanEngine::update_vertex_index_buffers(AllocatedBuffer srcVertexBuffer, int& vertexBufferOffset, AllocatedBuffer srcIndexBuffer, int& indexBufferOffset)
+void VulkanEngine::generate_indirect_commands()
 {
-    const VkDeviceSize srcVertexBufferSize = srcVertexBuffer.info.size;
-    const VkDeviceSize srcIndexBufferSize = srcIndexBuffer.info.size;
+    int verticesOffset = 0;
+    int indicesOffset = 0;
+    int instancesOffset = 0;
 
-    VkBufferCopy vertexCopy {};
-    vertexCopy.dstOffset = vertexBufferOffset;
-    vertexCopy.srcOffset = 0;
-    vertexCopy.size = srcVertexBufferSize;
-    VkBufferCopy indexCopy {};
-    indexCopy.dstOffset = indexBufferOffset;
-    indexCopy.srcOffset = 0;
-    indexCopy.size = srcIndexBufferSize;
+    for (const auto& engineModel : mEngineModels | std::views::values) {
+        for (const auto& mesh : engineModel.gltfModel->mMeshes) {
+            for (auto& primitive : mesh->mPrimitives) {
+                VkDrawIndexedIndirectCommand indirectCmd {};
+                indirectCmd.instanceCount = engineModel.instances.size();
+                indirectCmd.firstInstance = instancesOffset;
+                indirectCmd.vertexOffset = verticesOffset;
+                indirectCmd.indexCount = primitive.indexCount;
+                indirectCmd.firstIndex = indicesOffset;
 
-    mBufferCopyBatches.perDrawBuffers.emplace_back(
-        srcVertexBuffer.buffer,
-        mVertexBuffer.buffer,
-        std::vector<VkBufferCopy> { vertexCopy });
-    mBufferCopyBatches.perDrawBuffers.emplace_back(
-        srcIndexBuffer.buffer,
-        mIndexBuffer.buffer,
-        std::vector<VkBufferCopy> { indexCopy });
+                mPrimitiveCommands[&primitive] = indirectCmd;
 
-    vertexBufferOffset += srcVertexBufferSize;
-    indexBufferOffset += srcIndexBufferSize;
-}
+                verticesOffset += primitive.vertexCount;
+                indicesOffset += primitive.indexCount;
+            }
+        }
+        instancesOffset += engineModel.instances.size();
+    }
 
-void VulkanEngine::generate_indirect_commands(Primitive& primitive, int instanceCount, int instancesOffset, int& verticesOffset, int& indicesOffset)
-{
-    VkDrawIndexedIndirectCommand indirectCmd {};
-    indirectCmd.instanceCount = instanceCount;
-    indirectCmd.firstInstance = instancesOffset;
-    indirectCmd.vertexOffset = verticesOffset;
-    indirectCmd.indexCount = primitive.indexCount;
-    indirectCmd.firstIndex = indicesOffset;
+	// Fill the primitives with material index and transform index, split each transform index into separate, duplicated primitive
+    // Maybe CPU side fill the vertices and indices offset first before sending it off to compute?
+    // Ensure the material buffer and transform buffers are updated the same order as when they are assigned to primitives
+    // Compute shader will generate indirect commands from the primitives, 1 material index and 1 transform index
+    // Vertex shader will get values of materials and transforms from the index within each indirect command
 
-    mPrimitiveCommands[&primitive] = indirectCmd;
-
-    verticesOffset += primitive.vertexCount;
-    indicesOffset += primitive.indexCount;
+    // Iterate over the nodes to get transform index and assign to each primitive
+    // Update vertex-index, material, transform, and primitive buffer first (barriers too)
+    // Will need material and transform index offsets as well
 }
 
 void VulkanEngine::assign_indirect_groups(MeshNode* meshNode, Primitive& primitive)
@@ -837,54 +863,20 @@ void VulkanEngine::traverse_nodes(Node* startingNode, std::vector<glm::mat4>& no
         }
     }
 
-    for (auto childNode : startingNode->mChildren) {
+    for (const auto& childNode : startingNode->mChildren) {
         traverse_nodes(childNode.get(), nodeTransformMatrices, nodeIndex);
     }
 }
 
-void VulkanEngine::iterate_models()
+void VulkanEngine::iterate_nodes()
 {
-    int vertexBufferOffset = 0;
-    int indexBufferOffset = 0;
-
-    int verticesOffset = 0;
-    int indicesOffset = 0;
-
-    int instancesOffset = 0;
-
     int nodeIndex = 0;
 
-    delete_models();
-
     for (const auto& engineModel : mEngineModels | std::views::values) {
-        update_vertex_index_buffers(engineModel.gltfModel->mModelBuffers.vertex, vertexBufferOffset, engineModel.gltfModel->mModelBuffers.index, indexBufferOffset);
-
-        for (const auto& mesh : engineModel.gltfModel->mMeshes | std::views::values) {
-            for (auto& primitive : mesh->mPrimitives) {
-                generate_indirect_commands(primitive, engineModel.instances.size(), instancesOffset, verticesOffset, indicesOffset);
-            }
-        }
-
         for (const auto topNode : engineModel.gltfModel->mTopNodes) {
             traverse_nodes(topNode.get(), mNodeTransformMatrices, nodeIndex);
         }
-
-        instancesOffset += engineModel.instances.size();
     }
-
-    // Fill the primitives with material index and transform index, split each transform index into separate, duplicated primitive
-    // Maybe CPU side fill the vertices and indices offset first before sending it off to compute?
-    // Ensure the material buffer and transform buffers are updated the same order as when they are assigned to primitives
-    // Compute shader will generate indirect commands from the primitives, 1 material index and 1 transform index
-    // Vertex shader will get values of materials and transforms from the index within each indirect command
-
-    // Iterate over the nodes to get transform index and assign to each primitive
-    // Primitves should now be assigned material index instead of the material pointer
-    // Update vertex-index, material, transform, primitive buffer in between compute shader calls
-
-    // Buffers
-    // 1. Primitive buffer
-    // 2. Indirect buffer
 }
 
 void VulkanEngine::update_indirect_buffer()
@@ -921,8 +913,6 @@ void VulkanEngine::update_instanced_buffer()
 
     std::vector<InstanceData> instancesData;
     for (auto& engineModel : mEngineModels | std::views::values) {
-        delete_instances(engineModel);
-
         for (auto& instance : engineModel.instances) {
             glm::mat4 translationMatrix = glm::translate(glm::mat4(1.f), instance.transformComponents.translation);
             glm::mat4 rotationX = glm::rotate(glm::mat4(1.f), instance.transformComponents.rotation[0], glm::vec3(1.f, 0.f, 0.f));
@@ -1062,8 +1052,13 @@ void VulkanEngine::update_draw_data()
 {
     const auto start = std::chrono::system_clock::now();
 
-    iterate_models();
+    delete_objects();
+
+    update_geometry_buffers();
+    generate_indirect_commands();
+	iterate_nodes();
     update_indirect_buffer();
+
     update_node_transform_buffer();
     update_material_buffer();
     update_material_texture_array();
