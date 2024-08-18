@@ -67,11 +67,17 @@ struct FrameData {
     }
 };
 
+struct EngineFlags {
+    bool modelsUpdated = false;
+    bool instancesUpdated = false;
+};
+
 class VulkanEngine {
 public:
     // Engine state
     bool mIsInitialized { false };
     bool mStopRendering { false };
+    EngineFlags mFlags;
 
     // Stats
     EngineStats mStats;
@@ -245,7 +251,7 @@ public:
     void destroy_image(const AllocatedImage& img);
 
     void load_models(const std::vector<std::filesystem::path>& modelFilePaths);
-    ModelBuffers upload_model(std::vector<uint32_t>& indices, std::vector<Vertex>& vertices);
+    ModelBuffers upload_model(const std::vector<uint32_t>& indices, const std::vector<Vertex>& vertices);
 
     AllocatedBuffer create_staging_buffer(size_t allocSize, DeletionQueue<VkBuffer>& bufferDeletionQueue) const;
     void create_vertex_index_buffers();
@@ -281,6 +287,7 @@ public:
 
     void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 
+    void reset_flags();
     void cleanup_immediate();
     void cleanup_swapchain();
     void cleanup_descriptors();

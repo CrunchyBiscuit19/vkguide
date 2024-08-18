@@ -66,7 +66,7 @@ void VulkanEngine::init()
     init_sync_structures();
     init_descriptors();
     init_pipeline_caches();
-    //init_pipelines();
+    // init_pipelines();
     init_buffers();
     init_imgui();
     init_default_data();
@@ -687,7 +687,7 @@ void VulkanEngine::load_models(const std::vector<std::filesystem::path>& modelPa
     mBufferDeletionQueue.modelLoadStagingBuffers.flush();
 }
 
-ModelBuffers VulkanEngine::upload_model(std::vector<uint32_t>& srcIndexVector, std::vector<Vertex>& srcVertexVector)
+ModelBuffers VulkanEngine::upload_model(const std::vector<uint32_t>& srcIndexVector, const std::vector<Vertex>& srcVertexVector)
 {
     ModelBuffers modelBuffers;
 
@@ -760,7 +760,7 @@ void VulkanEngine::create_material_constants_buffer()
 
 void VulkanEngine::create_indirect_buffer()
 {
-    const auto indirectBufferSize = MAX_INDIRECT_COMMANDS * sizeof(VkDrawIndexedIndirectCommand);
+    constexpr auto indirectBufferSize = MAX_INDIRECT_COMMANDS * sizeof(VkDrawIndexedIndirectCommand);
     mIndirectBuffer = create_buffer(indirectBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, mBufferDeletionQueue.lifetimeBuffers);
 }
 
@@ -774,6 +774,10 @@ void VulkanEngine::delete_objects()
 
 void VulkanEngine::update_geometry_buffers()
 {
+    if (!mFlags.modelsUpdated) {
+        return;
+    }
+
     int vertexBufferOffset = 0;
     int indexBufferOffset = 0;
 
@@ -806,6 +810,10 @@ void VulkanEngine::update_geometry_buffers()
 
 void VulkanEngine::generate_indirect_commands()
 {
+    if (!(mFlags.modelsUpdated || mFlags.instancesUpdated)) {
+        return;
+    }
+
     int verticesOffset = 0;
     int indicesOffset = 0;
     int instancesOffset = 0;
@@ -829,7 +837,7 @@ void VulkanEngine::generate_indirect_commands()
         instancesOffset += engineModel.instances.size();
     }
 
-	// Fill the primitives with material index and transform index, split each transform index into separate, duplicated primitive
+    // Fill the primitives with material index and transform index, split each transform index into separate, duplicated primitive
     // Maybe CPU side fill the vertices and indices offset first before sending it off to compute?
     // Ensure the material buffer and transform buffers are updated the same order as when they are assigned to primitives
     // Compute shader will generate indirect commands from the primitives, 1 material index and 1 transform index
@@ -884,6 +892,10 @@ void VulkanEngine::update_indirect_buffer()
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mIndirectBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
 
+    if (!(mFlags.modelsUpdated || mFlags.instancesUpdated)) {
+        return;
+    }
+
     VkDeviceSize indirectBufferOffset = 0;
     for (const auto& indirectBatch : mIndirectBatches | std::views::values) {
         const auto& indirectCommands = indirectBatch.commands;
@@ -910,6 +922,10 @@ void VulkanEngine::update_instanced_buffer()
 {
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mInstanceBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+
+    if (!(mFlags.modelsUpdated || mFlags.instancesUpdated)) {
+        return;
+    }
 
     std::vector<InstanceData> instancesData;
     for (auto& engineModel : mEngineModels | std::views::values) {
@@ -972,6 +988,10 @@ void VulkanEngine::update_node_transform_buffer()
 {
     static const AllocatedBuffer stagingBuffer = create_staging_buffer(mNodeTransformsBuffer.info.size, mBufferDeletionQueue.lifetimeBuffers);
     static void* stagingAddress = stagingBuffer.allocation->GetMappedData();
+
+    if (!mFlags.modelsUpdated) {
+        return;
+    }
 
     const VkDeviceSize meshTransformsSize = mNodeTransformMatrices.size() * sizeof(glm::mat4);
 
@@ -1056,7 +1076,7 @@ void VulkanEngine::update_draw_data()
 
     update_geometry_buffers();
     generate_indirect_commands();
-	iterate_nodes();
+    iterate_nodes();
     update_indirect_buffer();
 
     update_node_transform_buffer();
@@ -1064,11 +1084,12 @@ void VulkanEngine::update_draw_data()
     update_material_texture_array();
     update_instanced_buffer();
     update_scene_buffer();
+
     submit_buffer_updates(mBufferCopyBatches.perDrawBuffers);
 
     const auto end = std::chrono::system_clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    mStats.scene_update_time = static_cast<float>(elapsed.count()) / 1000.f;
+    mStats.scene_update_time = static_cast<float>(elapsed.count()) / ONE_SECOND_IN_MILLISECONDS;
 }
 
 void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView) const
@@ -1153,6 +1174,7 @@ void VulkanEngine::draw()
 
     cleanup_per_draw();
     update_draw_data();
+    reset_flags();
 
     // Request image from the swapchain
     // _swapchainSemaphore signalled only when next image is acquired.
@@ -1312,23 +1334,32 @@ void VulkanEngine::imgui_frame()
                 if (ImGui::Button("Add Instance")) {
                     EngineInstance newEngineInstance;
                     engineModel.second.instances.push_back(newEngineInstance);
+                    mFlags.instancesUpdated = true;
                 }
                 ImGui::SameLine();
                 ImGui::PushStyleColor(ImGuiCol_Button, static_cast<ImVec4>(ImColor::ImColor(0.66f, 0.16f, 0.16f)));
                 if (ImGui::Button("Delete Model")) {
                     engineModel.second.toDelete = true;
+                    mFlags.modelsUpdated = true;
                 }
                 ImGui::PopStyleColor();
 
                 for (auto& instance : engineModel.second.instances) {
                     ImGui::SeparatorText(fmt::format("Instance {}", boost::uuids::to_string(instance.id)).c_str());
                     ImGui::PushID(boost::uuids::to_string(instance.id).c_str());
-                    ImGui::InputFloat3("Translation", &instance.transformComponents.translation[0]);
-                    ImGui::SliderFloat3("Pitch / Yaw / Roll", &instance.transformComponents.rotation[0], -glm::pi<float>(), glm::pi<float>());
-                    ImGui::SliderFloat("Scale", &instance.transformComponents.scale, 0.f, 100.f);
+                    if (ImGui::InputFloat3("Translation", &instance.transformComponents.translation[0])) {
+                        mFlags.instancesUpdated = true;
+                    }
+                    if (ImGui::SliderFloat3("Pitch / Yaw / Roll", &instance.transformComponents.rotation[0], -glm::pi<float>(), glm::pi<float>())) {
+                        mFlags.instancesUpdated = true;
+                    }
+                    if (ImGui::SliderFloat("Scale", &instance.transformComponents.scale, 0.f, 100.f)) {
+                        mFlags.instancesUpdated = true;
+                    }
                     ImGui::PushStyleColor(ImGuiCol_Button, static_cast<ImVec4>(ImColor::ImColor(0.66f, 0.16f, 0.16f)));
                     if (ImGui::Button("Delete Instance")) {
                         instance.toDelete = true;
+                        mFlags.instancesUpdated = true;
                     }
                     ImGui::PopStyleColor();
                     ImGui::PopID();
@@ -1345,6 +1376,7 @@ void VulkanEngine::imgui_frame()
             auto selectedFiles = mSelectModelFileDialog.GetMultiSelected();
             load_models(selectedFiles);
             mSelectModelFileDialog.ClearSelected();
+            mFlags.modelsUpdated = true;
         }
     }
     ImGui::Render();
@@ -1411,6 +1443,12 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& f
 
     VK_CHECK(vkQueueSubmit2(mGraphicsQueue, 1, &submit, mImmSubmit.fence));
     VK_CHECK(vkWaitForFences(mDevice, 1, &mImmSubmit.fence, true, 99999999999999999));
+}
+
+void VulkanEngine::reset_flags()
+{
+    mFlags.modelsUpdated = false;
+    mFlags.instancesUpdated = false;
 }
 
 void VulkanEngine::cleanup_immediate()
